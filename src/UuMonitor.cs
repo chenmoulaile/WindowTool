@@ -29,6 +29,13 @@ namespace WindowTool
         static string reason;      // 当前提醒原因；null=无
         static int phase;          // 提醒循环相位（慢速tick计数）
 
+        // 内存判定：UU相关进程最大内存 >100MB=被控；<50MB=解除；中间保持原状态（滞回防抖）
+        const double CtrlOnMB = 100;
+        const double CtrlOffMB = 50;
+        static bool controlled;
+        static string memInfo = "";
+        static DateTime releaseShownUntil = DateTime.MinValue;
+
         public static event Action<string> StatusChanged;
 
         public static bool Running { get { return slow != null && slow.Enabled; } }
@@ -69,10 +76,12 @@ namespace WindowTool
             wasLagging = false;
             reason = null;
             phase = 0;
+            controlled = false;
+            releaseShownUntil = DateTime.MinValue;
             lastFastTick = Stopwatch.GetTimestamp();
             fast.Start();
             slow.Start();
-            RaiseStatus("监控中…(进程窗口/标题" + (lagAlertEnabled ? "/卡顿" : "") + ")");
+            RaiseStatus("监控中…(进程内存/标题" + (lagAlertEnabled ? "/卡顿" : "") + ")");
         }
 
         public static void Stop()
@@ -89,10 +98,7 @@ namespace WindowTool
         {
             EnsureCreated();
             alert.SetText("你已被控制");
-            alert.SetVisible(true);
-            var t = new Timer { Interval = 3000 };
-            t.Tick += (s, e) => { t.Stop(); t.Dispose(); if (reason == null) alert.SetVisible(false); };
-            t.Start();
+            alert.ShowOnce(3000);
         }
 
         // ---------- 卡顿检测：UI线程 250ms 定时器的实际间隔漂移 ----------
@@ -128,31 +134,31 @@ namespace WindowTool
             try
             {
                 phase++;
-                string hit = Scan();
-                string why = hit;
-                if (why == null && lagging && lagAlertEnabled) why = "疑似异常卡顿";
+                string memReason = EvalMemory();
+                string why = memReason;
+                if (why == null && titleKey.Length > 0 && TitleHit())
+                    why = "标题含\"" + titleKey + "\"";
+                if (why == null && lagging && lagAlertEnabled)
+                    why = "疑似异常卡顿";
 
-                if (why != reason)
+                if (why != null)
                 {
-                    reason = why;
-                    phase = 0;
-                }
-
-                if (reason != null)
-                {
+                    if (reason == null) phase = 0;
+                    reason = "你已被控制";
                     // 循环提醒：显示约2秒、隐藏约4秒，直到状态解除
                     bool vis = (phase % 6) < 2;
                     alert.SetText(reason);
                     alert.SetVisible(vis);
-                    string src = reason == "你已被控制"
-                        ? "检测到被控特征！鼠标旁持续提醒。(" + hit + ")"
-                        : "系统持续卡顿中，鼠标旁提醒。";
-                    RaiseStatus(src);
+                    RaiseStatus("检测到被控！(" + why + ") 鼠标旁持续提醒。");
                 }
                 else
                 {
-                    alert.SetVisible(false);
-                    RaiseStatus(lagging ? "监控中…系统略卡(未达提醒阈值)" : "监控中…未检测到被控。");
+                    reason = null;
+                    // "已解除控制"提示显示期间不要把它藏掉
+                    if (DateTime.Now >= releaseShownUntil) alert.SetVisible(false);
+                    RaiseStatus(controlled
+                        ? "监控中…已过峰值，等待回落到" + CtrlOffMB + "MB以下。"
+                        : "监控中…" + memInfo + "，未检测到被控。");
                 }
                 wasLagging = lagging;
             }
@@ -162,51 +168,71 @@ namespace WindowTool
             }
         }
 
-        // 返回命中描述；未命中返回 null
-        static string Scan()
+        // 内存滞回判定：>100MB 进入被控；<50MB 解除并弹"已解除控制"
+        static string EvalMemory()
         {
-            // 1) 进程名或 exe 完整路径包含关键词 => 直接判定被控
-            //    （如 GameViewerServer.exe 一运行即触发，无需等窗口出现）
-            string nameFallback = null;
+            if (procKeys.Length == 0) return null;
+            long max = 0;
+            int count = 0;
             foreach (var p in Process.GetProcesses())
             {
                 string name = null;
                 string path = null;
+                long ws = 0;
                 try { name = p.ProcessName.ToLowerInvariant(); } catch { }
                 try { path = p.MainModule.FileName.ToLowerInvariant(); } catch { }
+                try { ws = p.WorkingSet64; } catch { }
                 finally { p.Dispose(); }
 
+                bool isUu = false;
                 foreach (var k in procKeys)
                 {
-                    if (path != null && path.Contains(k))
-                    {
-                        string shown = "exe:" + path;
-                        return shown.Length > 60 ? shown.Substring(0, 57) + "…" : shown;
-                    }
-                    if (nameFallback == null && name != null && name.Contains(k))
-                        nameFallback = "进程:" + name;
+                    if ((name != null && name.Contains(k)) ||
+                        (path != null && path.Contains(k))) { isUu = true; break; }
                 }
+                if (!isUu) continue;
+                count++;
+                if (ws > max) max = ws;
             }
-            if (nameFallback != null) return nameFallback;
+            double mb = max / 1048576.0;
+            memInfo = count == 0 ? "未发现UU进程" : string.Format("UU进程{0}个 最大{1:F0}MB", count, mb);
 
-            // 2) 任意可见窗口标题包含关键词
-            if (titleKey.Length > 0)
+            if (!controlled && mb > CtrlOnMB)
             {
-                bool titleHit = false;
-                Native.EnumWindows((h, lp) =>
-                {
-                    if (titleHit) return true;
-                    if (!Native.IsWindowVisible(h)) return true;
-                    int len = Native.GetWindowTextLength(h);
-                    if (len <= 0) return true;
-                    var sb = new StringBuilder(len + 2);
-                    Native.GetWindowText(h, sb, sb.Capacity);
-                    if (sb.ToString().Contains(titleKey)) titleHit = true;
-                    return !titleHit;
-                }, IntPtr.Zero);
-                if (titleHit) return "标题含\"" + titleKey + "\"";
+                controlled = true;
             }
-            return null;
+            else if (controlled && mb < CtrlOffMB)
+            {
+                controlled = false;
+                OnReleased();
+            }
+            return controlled ? string.Format("内存{0:F0}MB", mb) : null;
+        }
+
+        static void OnReleased()
+        {
+            alert.SetText("已解除控制");
+            alert.ShowOnce(3000);
+            releaseShownUntil = DateTime.Now.AddSeconds(3.5);
+            RaiseStatus("已解除控制。");
+        }
+
+        // 任意可见窗口标题包含关键词
+        static bool TitleHit()
+        {
+            bool titleHit = false;
+            Native.EnumWindows((h, lp) =>
+            {
+                if (titleHit) return true;
+                if (!Native.IsWindowVisible(h)) return true;
+                int len = Native.GetWindowTextLength(h);
+                if (len <= 0) return true;
+                var sb = new StringBuilder(len + 2);
+                Native.GetWindowText(h, sb, sb.Capacity);
+                if (sb.ToString().Contains(titleKey)) titleHit = true;
+                return !titleHit;
+            }, IntPtr.Zero);
+            return titleHit;
         }
 
         static void RaiseStatus(string msg)

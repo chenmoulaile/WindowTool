@@ -16,7 +16,7 @@ namespace WindowTool
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
-            Size = Theme.Sz(96, 26);
+            Size = Theme.Sz(52, 14); // 迷你尺寸
             BackColor = Color.FromArgb(207, 34, 46); // GitHub danger 红
             DoubleBuffered = true;
 
@@ -26,7 +26,7 @@ namespace WindowTool
                 Dock = DockStyle.Fill,
                 ForeColor = Color.White,
                 BackColor = Color.Transparent,
-                Font = new Font("微软雅黑", 9f, FontStyle.Bold),
+                Font = new Font("微软雅黑", 6.5f, FontStyle.Bold),
                 TextAlign = ContentAlignment.MiddleCenter
             };
             Controls.Add(lbl);
@@ -37,7 +37,7 @@ namespace WindowTool
             follow.Tick += (s, e) =>
             {
                 var p = Cursor.Position;
-                Location = new Point(p.X + Theme.S(14), p.Y + Theme.S(14));
+                Location = new Point(p.X + Theme.S(10), p.Y + Theme.S(10));
             };
 
             hideT = new Timer { Interval = 1500 };
@@ -55,8 +55,8 @@ namespace WindowTool
         {
             if (lbl.Text == text) return;
             lbl.Text = text;
-            int w = TextRenderer.MeasureText(text, lbl.Font).Width + Theme.S(20);
-            Size = new Size(Math.Max(Theme.S(72), w), Theme.S(26));
+            int w = TextRenderer.MeasureText(text, lbl.Font).Width + Theme.S(8);
+            Size = new Size(Math.Max(Theme.S(52), w), Theme.S(14));
             ApplyShape();
         }
 
@@ -83,12 +83,18 @@ namespace WindowTool
 
         public void SetVisible(bool v)
         {
+            SetVisible(v, 1500);
+        }
+
+        public void SetVisible(bool v, int autoHideMs)
+        {
             if (v && !Visible)
             {
                 var p = Cursor.Position;
-                Location = new Point(p.X + Theme.S(14), p.Y + Theme.S(14));
+                Location = new Point(p.X + Theme.S(10), p.Y + Theme.S(10));
                 Show();
                 follow.Start();
+                hideT.Interval = autoHideMs;
                 hideT.Stop();
                 hideT.Start();
             }
@@ -98,6 +104,12 @@ namespace WindowTool
                 hideT.Stop();
                 Hide();
             }
+        }
+
+        // 单次显示 ms 毫秒后自动消失（用于"已解除控制"提示）
+        public void ShowOnce(int ms)
+        {
+            SetVisible(true, ms);
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
