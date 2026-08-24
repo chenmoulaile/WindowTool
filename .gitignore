@@ -4,4 +4,4 @@ obj/
 *.suo
 .vs/
 crash.log
-dist/
+WindowTool_v*.zip

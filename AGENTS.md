@@ -14,15 +14,14 @@ build.bat
 ## 打包（每次改动后必须执行）
 
 1. `build.bat` 构建通过
-2. 用 PowerShell 压缩为 zip，供上传 GitHub Release：
+2. 用 PowerShell 压缩为 zip，放在**项目根目录**，供上传 GitHub Release：
 
 ```powershell
-New-Item -ItemType Directory -Force dist | Out-Null
-Compress-Archive -Force -Path WindowTool.exe,使用说明.txt,README.md -DestinationPath dist\WindowTool_v<版本>.zip
+Compress-Archive -Force -Path WindowTool.exe,使用说明.txt,README.md -DestinationPath WindowTool_v<版本>.zip
 ```
 
-- 版本号递增：v1.4 → v1.5 → v1.6 …（改功能就递增）
-- `dist/` 已加入 .gitignore，zip 不入库
+- 版本号递增：v1.4 → v1.5 → v1.8 …（改功能就递增）
+- `WindowTool_v*.zip` 已加入 .gitignore，zip 不入库
 
 ## 其他
 
