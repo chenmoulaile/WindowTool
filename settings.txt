@@ -1,0 +1,10 @@
+bgAlpha=240
+switchMin=0
+fitMode=0
+radius=2
+uuProc=uu
+uuTitle=远程
+uuEnabled=0
+silentStart=0
+bgMem=1
+bgCount=0
