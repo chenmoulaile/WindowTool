@@ -280,7 +280,8 @@ namespace WindowTool
 
             Label l1 = new Label(); l1.Text = "进程名含:"; l1.Location = Theme.P(80, 27); l1.Size = Theme.Sz(66, 18);
             Theme.StyleLabel(l1, Theme.TextDim);
-            txtKwProc = new TextBox(); txtKwProc.Text = "uu"; txtKwProc.Location = Theme.P(148, 24); txtKwProc.Size = Theme.Sz(86, 22);
+            // 默认同时匹配 UU远程(GameViewer) 的进程名与 exe 路径，逗号分隔多个关键词
+            txtKwProc = new TextBox(); txtKwProc.Text = "uu,gameviewer"; txtKwProc.Location = Theme.P(148, 24); txtKwProc.Size = Theme.Sz(86, 22);
             Theme.StyleText(txtKwProc);
             Label l2 = new Label(); l2.Text = "窗口标题含:"; l2.Location = Theme.P(244, 27); l2.Size = Theme.Sz(74, 18);
             Theme.StyleLabel(l2, Theme.TextDim);
@@ -296,7 +297,7 @@ namespace WindowTool
             chkLag.CheckedChanged += (s, e) => { UuConfigureLive(); SaveSettings(); };
 
             lblUUStatus = new Label();
-            lblUUStatus.Text = "提示：检测为尽力匹配，可修改关键词；被控时鼠标旁显示“你已被控制”。";
+            lblUUStatus.Text = "提示：匹配进程名或exe完整路径(如 GameViewerServer)；被控时鼠标旁持续提醒。";
             lblUUStatus.Location = Theme.P(118, 57);
             lblUUStatus.Size = Theme.Sz(370, 18);
             Theme.StyleLabel(lblUUStatus, Theme.TextDim);
@@ -436,6 +437,9 @@ namespace WindowTool
                 if (int.TryParse(v, out ri)) numRadius.Value = ClampDec(ri, numRadius.Minimum, numRadius.Maximum);
             }
             if (d.TryGetValue("uuProc", out v)) txtKwProc.Text = v;
+            // 旧版默认值只有"uu"，匹配不到 GameViewerServer，自动升级默认关键词
+            if (txtKwProc.Text.Trim().Equals("uu", StringComparison.OrdinalIgnoreCase))
+                txtKwProc.Text = "uu,gameviewer";
             if (d.TryGetValue("uuTitle", out v)) txtKwTitle.Text = v;
             chkSilent.Checked = d.TryGetValue("silentStart", out v) && v == "1";
             startupHidden = chkSilent.Checked;
@@ -737,7 +741,8 @@ namespace WindowTool
 
         Button NewBtn(string text, Point p, Size s, EventHandler h, bool primary)
         {
-            var b = new Button();
+            // 必须用自绘 DarkButton：原生 Button 的悬停是系统灰且无圆角
+            var b = new DarkButton();
             b.Text = text;
             b.Location = p;
             b.Size = s;

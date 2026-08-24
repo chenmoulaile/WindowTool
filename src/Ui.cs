@@ -62,19 +62,19 @@ namespace WindowTool
 
         static void ApplyGitHubDark()
         {
-            Bg = Color.FromArgb(13, 17, 23);           // #0d1117
-            Card = Color.FromArgb(22, 27, 34);          // #161b22
-            Surface = Color.FromArgb(33, 38, 45);       // #21262d
-            // 悬停：GitHub 强调蓝 #2f81f7 调出的蓝色高亮，一眼可见（不再是灰底）
-            SurfaceHover = Color.FromArgb(30, 60, 96);  // #1e3c60
-            SurfacePressed = Color.FromArgb(20, 44, 74);// 更深的按下色
-            Border = Color.FromArgb(70, 79, 90);        // #464f5a 边框可见
-            BorderStrong = Color.FromArgb(88, 132, 196);// 悬停边框：亮蓝灰
-            Text = Color.FromArgb(230, 237, 243);
-            TextDim = Color.FromArgb(139, 148, 158);
-            Accent = Color.FromArgb(47, 129, 247);      // #2f81f7
-            AccentHover = Color.FromArgb(88, 166, 255);
-            Green = Color.FromArgb(63, 185, 80);
+            // DeepSeek 风格暗色系：中性深灰面板 + 品牌蓝强调
+            Bg = Color.FromArgb(24, 25, 27);             // #18191b 页面底
+            Card = Color.FromArgb(35, 37, 41);           // #232529 卡片
+            Surface = Color.FromArgb(51, 54, 59);        // #33363b 控件面
+            SurfaceHover = Color.FromArgb(44, 58, 99);   // 悬停：明显的蓝色高亮（非灰）
+            SurfacePressed = Color.FromArgb(34, 48, 82); // 按下：更深的蓝
+            Border = Color.FromArgb(63, 67, 74);         // #3f434a
+            BorderStrong = Color.FromArgb(109, 139, 255);// 悬停边框：亮蓝
+            Text = Color.FromArgb(231, 233, 236);
+            TextDim = Color.FromArgb(154, 160, 170);
+            Accent = Color.FromArgb(77, 107, 254);       // #4d6bfe DeepSeek 蓝
+            AccentHover = Color.FromArgb(112, 137, 255);
+            Green = Color.FromArgb(86, 200, 138);
         }
 
         public static int CornerRadius(int width, int height)

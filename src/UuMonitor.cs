@@ -165,31 +165,29 @@ namespace WindowTool
         // 返回命中描述；未命中返回 null
         static string Scan()
         {
-            // 1) 关键词进程拥有可见普通窗口 => 远控会话窗口已打开（比仅查进程更准：
-            //    UU 常驻后台不算，只有弹出会话/主窗口才算）
-            var pidCache = new Dictionary<uint, string>();
-            string procHit = null;
-            Native.EnumWindows((h, lp) =>
+            // 1) 进程名或 exe 完整路径包含关键词 => 直接判定被控
+            //    （如 GameViewerServer.exe 一运行即触发，无需等窗口出现）
+            string nameFallback = null;
+            foreach (var p in Process.GetProcesses())
             {
-                if (procHit != null) return true;
-                if (!Native.IsWindowVisible(h)) return true;
-                if (Native.GetWindowTextLength(h) <= 0) return true;
-                int ex = Native.GetWindowLong(h, Native.GWL_EXSTYLE);
-                if ((ex & Native.WS_EX_TOOLWINDOW) != 0) return true;
-                uint pid;
-                Native.GetWindowThreadProcessId(h, out pid);
-                string name;
-                if (!pidCache.TryGetValue(pid, out name))
-                {
-                    name = ProcName(pid);
-                    pidCache[pid] = name;
-                }
-                if (name.Length == 0) return true;
+                string name = null;
+                string path = null;
+                try { name = p.ProcessName.ToLowerInvariant(); } catch { }
+                try { path = p.MainModule.FileName.ToLowerInvariant(); } catch { }
+                finally { p.Dispose(); }
+
                 foreach (var k in procKeys)
-                    if (name.Contains(k)) { procHit = "进程:" + name; return false; }
-                return true;
-            }, IntPtr.Zero);
-            if (procHit != null) return procHit;
+                {
+                    if (path != null && path.Contains(k))
+                    {
+                        string shown = "exe:" + path;
+                        return shown.Length > 60 ? shown.Substring(0, 57) + "…" : shown;
+                    }
+                    if (nameFallback == null && name != null && name.Contains(k))
+                        nameFallback = "进程:" + name;
+                }
+            }
+            if (nameFallback != null) return nameFallback;
 
             // 2) 任意可见窗口标题包含关键词
             if (titleKey.Length > 0)
@@ -209,16 +207,6 @@ namespace WindowTool
                 if (titleHit) return "标题含\"" + titleKey + "\"";
             }
             return null;
-        }
-
-        static string ProcName(uint pid)
-        {
-            try
-            {
-                using (var p = Process.GetProcessById((int)pid))
-                    return p.ProcessName.ToLowerInvariant();
-            }
-            catch { return ""; }
         }
 
         static void RaiseStatus(string msg)
