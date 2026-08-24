@@ -1,10 +1,13 @@
 bgAlpha=240
 switchMin=0
+switchSec=0
 fitMode=0
-radius=2
+radius=7
 uuProc=uu
 uuTitle=远程
 uuEnabled=0
-silentStart=0
+uuLag=1
+silentStart=1
 bgMem=1
+dark=0
 bgCount=0

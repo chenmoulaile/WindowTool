@@ -9,12 +9,15 @@ namespace WindowTool
     {
         public static int Radius = 8;
         public static bool IsDark;
+        public static float Scale = 1f;
 
         public static Color Bg;
         public static Color Card;
         public static Color Surface;
         public static Color SurfaceHover;
+        public static Color SurfacePressed;
         public static Color Border;
+        public static Color BorderStrong;
         public static Color Text;
         public static Color TextDim;
         public static Color Accent;
@@ -23,6 +26,11 @@ namespace WindowTool
 
         public static readonly Font FontUi = new Font("微软雅黑", 9f);
         public static readonly Font FontTitle = new Font("微软雅黑", 9f, FontStyle.Bold);
+
+        // DPI 缩放：所有像素坐标/尺寸都经过 S/P/Sz，高分屏下清晰不模糊
+        public static int S(int v) { return (int)Math.Round(v * Scale); }
+        public static Point P(int x, int y) { return new Point(S(x), S(y)); }
+        public static Size Sz(int w, int h) { return new Size(S(w), S(h)); }
 
         static Theme()
         {
@@ -42,7 +50,9 @@ namespace WindowTool
             Card = Color.White;
             Surface = Color.FromArgb(240, 241, 245);
             SurfaceHover = Color.FromArgb(226, 229, 238);
+            SurfacePressed = Color.FromArgb(210, 214, 228);
             Border = Color.FromArgb(214, 218, 230);
+            BorderStrong = Color.FromArgb(150, 158, 178);
             Text = Color.FromArgb(31, 36, 48);
             TextDim = Color.FromArgb(122, 128, 144);
             Accent = Color.FromArgb(59, 130, 246);
@@ -52,14 +62,17 @@ namespace WindowTool
 
         static void ApplyGitHubDark()
         {
-            Bg = Color.FromArgb(13, 17, 23);
-            Card = Color.FromArgb(22, 27, 34);
-            Surface = Color.FromArgb(33, 38, 45);
-            SurfaceHover = Color.FromArgb(48, 54, 61);
-            Border = Color.FromArgb(48, 54, 61);
+            Bg = Color.FromArgb(13, 17, 23);           // #0d1117
+            Card = Color.FromArgb(22, 27, 34);          // #161b22
+            Surface = Color.FromArgb(33, 38, 45);       // #21262d
+            // 悬停：GitHub 强调蓝 #2f81f7 调出的蓝色高亮，一眼可见（不再是灰底）
+            SurfaceHover = Color.FromArgb(30, 60, 96);  // #1e3c60
+            SurfacePressed = Color.FromArgb(20, 44, 74);// 更深的按下色
+            Border = Color.FromArgb(70, 79, 90);        // #464f5a 边框可见
+            BorderStrong = Color.FromArgb(88, 132, 196);// 悬停边框：亮蓝灰
             Text = Color.FromArgb(230, 237, 243);
             TextDim = Color.FromArgb(139, 148, 158);
-            Accent = Color.FromArgb(47, 129, 247);
+            Accent = Color.FromArgb(47, 129, 247);      // #2f81f7
             AccentHover = Color.FromArgb(88, 166, 255);
             Green = Color.FromArgb(63, 185, 80);
         }
@@ -67,7 +80,7 @@ namespace WindowTool
         public static int CornerRadius(int width, int height)
         {
             int max = Math.Max(0, Math.Min(width, height) / 2 - 1);
-            int r = Radius;
+            int r = S(Radius);
             return r > max ? max : r;
         }
 
@@ -144,7 +157,8 @@ namespace WindowTool
 
         public static void StyleCheck(CheckBox c)
         {
-            c.FlatStyle = FlatStyle.Flat;
+            // 用系统主题绘制复选框（Win11 深色模式下复选框本身也会是深色）
+            c.FlatStyle = FlatStyle.Standard;
             c.ForeColor = Text;
             c.Font = FontUi;
             c.Cursor = Cursors.Hand;
@@ -258,8 +272,9 @@ namespace WindowTool
             }
             else
             {
-                fill = pressed ? Theme.Border : (hover ? Theme.SurfaceHover : (Theme.IsDark ? Theme.Surface : Theme.Card));
-                border = Theme.Border;
+                // 悬停/按下使用主题蓝高亮+亮边框，暗色下不再是"看不见的灰"
+                fill = pressed ? Theme.SurfacePressed : (hover ? Theme.SurfaceHover : (Theme.IsDark ? Theme.Surface : Theme.Card));
+                border = hover ? Theme.BorderStrong : Theme.Border;
                 fore = Theme.Text;
             }
 
@@ -292,7 +307,7 @@ namespace WindowTool
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             g.Clear(Theme.SolidBack(this));
-            var r = new Rectangle(1, 10, Width - 3, Height - 12);
+            var r = new Rectangle(1, Theme.S(10), Width - 3, Height - Theme.S(12));
             int rad = Theme.CornerRadius(r.Width, r.Height);
             using (var path = Theme.RoundRect(r, rad))
             using (var fill = new SolidBrush(Theme.Card))
@@ -301,7 +316,7 @@ namespace WindowTool
                 g.FillPath(fill, path);
                 g.DrawPath(pen, path);
             }
-            TextRenderer.DrawText(g, Text, Theme.FontTitle, new Point(14, 2), Theme.Accent);
+            TextRenderer.DrawText(g, Text, Theme.FontTitle, new Point(Theme.S(14), Theme.S(2)), Theme.Accent);
         }
     }
 
@@ -309,7 +324,6 @@ namespace WindowTool
     {
         int min = 0, max = 100, val = 0;
         bool dragging, hover;
-        const float Pad = 12f;
 
         public event EventHandler ValueChanged;
 
@@ -319,7 +333,7 @@ namespace WindowTool
                      ControlStyles.ResizeRedraw | ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor, true);
             BackColor = Color.Transparent;
             Cursor = Cursors.Hand;
-            Height = 32;
+            Height = Theme.S(32);
         }
 
         public int Minimum { get { return min; } set { min = value; if (val < min) { val = min; RaiseChange(); } Invalidate(); } }
@@ -355,35 +369,39 @@ namespace WindowTool
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            float w = Width - Pad * 2;
+            int pad = Theme.S(12);
+            int trackH = Math.Max(4, Theme.S(6));
+            float w = Width - pad * 2;
             float cy = Height / 2f;
 
-            using (var track = Theme.RoundRect(new Rectangle((int)Pad, (int)(cy - 2), (int)w, 6), 3))
+            using (var track = Theme.RoundRect(new Rectangle(pad, (int)(cy - trackH / 2), (int)w, trackH), trackH / 2))
             using (var b = new SolidBrush(Theme.Border))
                 g.FillPath(b, track);
 
-            float fx = Pad + Frac() * w;
-            if (fx > Pad + 2)
+            float fx = pad + Frac() * w;
+            if (fx > pad + 2)
             {
-                using (var filled = Theme.RoundRect(new Rectangle((int)Pad, (int)(cy - 2), (int)(fx - Pad), 6), 3))
+                using (var filled = Theme.RoundRect(new Rectangle(pad, (int)(cy - trackH / 2), (int)(fx - pad), trackH), trackH / 2))
                 using (var b = new SolidBrush(Theme.Accent))
                     g.FillPath(b, filled);
             }
 
-            var thumbRect = new RectangleF(fx - 7, cy - 7, 14, 14);
+            int thumb = Theme.S(14);
             if (hover || dragging)
                 using (var b = new SolidBrush(Color.FromArgb(70, Theme.Accent)))
-                    g.FillEllipse(b, fx - 11, cy - 11, 22, 22);
+                    g.FillEllipse(b, fx - thumb * 0.8f, cy - thumb * 0.8f, thumb * 1.6f, thumb * 1.6f);
             using (var b = new SolidBrush(hover || dragging ? Theme.AccentHover : Theme.Accent))
-                g.FillEllipse(b, thumbRect);
+                g.FillEllipse(b, fx - thumb / 2f, cy - thumb / 2f, thumb, thumb);
+            int dot = Theme.S(9);
             using (var b = new SolidBrush(Theme.IsDark ? Theme.Card : Color.White))
-                g.FillEllipse(b, fx - 4.5f, cy - 4.5f, 9, 9);
+                g.FillEllipse(b, fx - dot / 2f, cy - dot / 2f, dot, dot);
         }
 
         void UpdateFromX(int x)
         {
-            float w = Width - Pad * 2;
-            float f = (x - Pad) / w;
+            float pad = Theme.S(12);
+            float w = Width - pad * 2;
+            float f = (x - pad) / w;
             if (f < 0) f = 0; if (f > 1) f = 1;
             Value = min + (int)Math.Round(f * (max - min));
         }

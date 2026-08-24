@@ -33,12 +33,12 @@ namespace WindowTool
         const int HK_VRAND = 12;
 
         ComboBox comboWins;
-        Button btnRefresh, btnPick, btnTopOnly, btnUnTop, btnOp2, btnCancelOp2, btnCancelAll, btnUp, btnDown, btnBottom, btnImgBg, btnVidBg, btnBgOff, btnTestAlert, btnFolderPick, btnBlur;
+        Button btnRefresh, btnPick, btnTopOnly, btnUnTop, btnOp2, btnCancelOp2, btnCancelAll, btnUp, btnDown, btnBottom, btnImgBg, btnVidBg, btnBgOff, btnTestAlert, btnFolderPick;
         DarkSlider trkAlpha;
         Label lblSel, lblAlphaVal, lblBgHint, lblUUStatus, lblKeys, lblMinTip;
         GroupBox grpOps, grpBg, grpUU;
-        NumericUpDown numBgAlpha, numMin, numRadius;
-        CheckBox chkUU, chkDark;
+        NumericUpDown numBgAlpha, numMin, numSec, numRadius;
+        CheckBox chkUU, chkDark, chkLag;
         ComboBox cmbVidMode;
         TextBox txtKwProc, txtKwTitle;
         Timer tmr, tmrBg, tmrAuto;
@@ -80,47 +80,47 @@ namespace WindowTool
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(524, 514);
+            ClientSize = Theme.Sz(524, 514);
 
             lblSel = new Label();
-            lblSel.Location = new Point(16, 14);
-            lblSel.Size = new Size(200, 26);
+            lblSel.Location = Theme.P(16, 14);
+            lblSel.Size = Theme.Sz(200, 26);
             Theme.StyleLabel(lblSel, Theme.TextDim);
             lblSel.Text = "当前窗口：(未选择)";
 
             chkAutoRun = new CheckBox();
             chkAutoRun.Text = "开机启动";
-            chkAutoRun.Location = new Point(220, 10);
-            chkAutoRun.Size = new Size(74, 24);
+            chkAutoRun.Location = Theme.P(220, 10);
+            chkAutoRun.Size = Theme.Sz(74, 24);
             Theme.StyleCheck(chkAutoRun);
             chkAutoRun.CheckedChanged += (s, e) => { SetAutoRun(chkAutoRun.Checked); SaveSettings(); };
 
             chkSilent = new CheckBox();
             chkSilent.Text = "静默";
-            chkSilent.Location = new Point(296, 10);
-            chkSilent.Size = new Size(52, 24);
+            chkSilent.Location = Theme.P(296, 10);
+            chkSilent.Size = Theme.Sz(52, 24);
             Theme.StyleCheck(chkSilent);
             chkSilent.CheckedChanged += (s, e) => SaveSettings();
 
             chkDark = new CheckBox();
             chkDark.Text = "暗色";
-            chkDark.Location = new Point(350, 10);
-            chkDark.Size = new Size(52, 24);
+            chkDark.Location = Theme.P(350, 10);
+            chkDark.Size = Theme.Sz(52, 24);
             Theme.StyleCheck(chkDark);
             chkDark.CheckedChanged += OnDarkToggle;
 
             Label lblRadTip = new Label();
             lblRadTip.Text = "圆角:";
-            lblRadTip.Location = new Point(406, 14);
-            lblRadTip.Size = new Size(34, 18);
+            lblRadTip.Location = Theme.P(406, 14);
+            lblRadTip.Size = Theme.Sz(34, 18);
             Theme.StyleLabel(lblRadTip, Theme.TextDim);
 
             numRadius = new NumericUpDown();
             numRadius.Minimum = 0;
             numRadius.Maximum = 20;
             numRadius.Value = 10;
-            numRadius.Location = new Point(440, 11);
-            numRadius.Size = new Size(44, 23);
+            numRadius.Location = Theme.P(442, 11);
+            numRadius.Size = Theme.Sz(44, 23);
             Theme.StyleNum(numRadius);
             numRadius.ValueChanged += OnRadiusChanged;
 
@@ -129,53 +129,53 @@ namespace WindowTool
             Controls.Add(chkDark);
 
             comboWins = new ComboBox();
-            comboWins.Location = new Point(12, 44);
-            comboWins.Size = new Size(300, 24);
+            comboWins.Location = Theme.P(12, 44);
+            comboWins.Size = Theme.Sz(300, 24);
             comboWins.DropDownStyle = ComboBoxStyle.DropDownList;
             Theme.StyleCombo(comboWins);
 
-            btnRefresh = NewBtn("刷新", new Point(318, 43), new Size(64, 25), OnRefresh, false);
-            btnPick = NewBtn("点选窗口", new Point(388, 43), new Size(108, 25), OnPick, true);
+            btnRefresh = NewBtn("刷新", Theme.P(318, 43), Theme.Sz(64, 25), OnRefresh, false);
+            btnPick = NewBtn("点选窗口", Theme.P(388, 43), Theme.Sz(108, 25), OnPick, true);
 
             grpOps = new DarkGroupBox();
             grpOps.Text = "窗口操作";
-            grpOps.Location = new Point(12, 82);
-            grpOps.Size = new Size(500, 142);
+            grpOps.Location = Theme.P(12, 80);
+            grpOps.Size = Theme.Sz(500, 140);
             grpOps.ForeColor = Theme.Text;
 
-            btnTopOnly = GNewBtn(grpOps, "仅置顶(①切换)", new Point(14, 24), new Size(104, 27), OnTopOnly, true);
-            btnUnTop = GNewBtn(grpOps, "取消置顶", new Point(124, 24), new Size(88, 27), OnUnTop, false);
-            btnOp2 = GNewBtn(grpOps, "②穿透置顶/取消", new Point(218, 24), new Size(126, 27), OnOp2, true);
-            btnCancelOp2 = GNewBtn(grpOps, "取消该窗口②", new Point(350, 24), new Size(122, 27), OnCancelOp2, false);
-            btnCancelAll = GNewBtn(grpOps, "取消所有②", new Point(14, 58), new Size(104, 27), OnCancelAll, false);
-            btnUp = GNewBtn(grpOps, "上移一层", new Point(124, 58), new Size(84, 27), OnLayerUp, false);
-            btnDown = GNewBtn(grpOps, "下移一层", new Point(214, 58), new Size(84, 27), OnLayerDown, false);
-            btnBottom = GNewBtn(grpOps, "移到最底", new Point(304, 58), new Size(84, 27), OnLayerBottom, false);
+            btnTopOnly = GNewBtn(grpOps, "仅置顶(①切换)", Theme.P(14, 24), Theme.Sz(104, 27), OnTopOnly, true);
+            btnUnTop = GNewBtn(grpOps, "取消置顶", Theme.P(124, 24), Theme.Sz(88, 27), OnUnTop, false);
+            btnOp2 = GNewBtn(grpOps, "②穿透置顶/取消", Theme.P(218, 24), Theme.Sz(126, 27), OnOp2, true);
+            btnCancelOp2 = GNewBtn(grpOps, "取消该窗口②", Theme.P(350, 24), Theme.Sz(122, 27), OnCancelOp2, false);
+            btnCancelAll = GNewBtn(grpOps, "取消所有②", Theme.P(14, 58), Theme.Sz(104, 27), OnCancelAll, false);
+            btnUp = GNewBtn(grpOps, "上移一层", Theme.P(124, 58), Theme.Sz(84, 27), OnLayerUp, false);
+            btnDown = GNewBtn(grpOps, "下移一层", Theme.P(214, 58), Theme.Sz(84, 27), OnLayerDown, false);
+            btnBottom = GNewBtn(grpOps, "移到最底", Theme.P(304, 58), Theme.Sz(84, 27), OnLayerBottom, false);
 
             Label lblAlpha = new Label();
             lblAlpha.Text = "透明度:";
-            lblAlpha.Location = new Point(16, 102);
-            lblAlpha.Size = new Size(56, 20);
+            lblAlpha.Location = Theme.P(16, 102);
+            lblAlpha.Size = Theme.Sz(56, 20);
             Theme.StyleLabel(lblAlpha, Theme.TextDim);
 
             trkAlpha = new DarkSlider();
             trkAlpha.Minimum = 40;
             trkAlpha.Maximum = 255;
             trkAlpha.Value = 255;
-            trkAlpha.Location = new Point(74, 94);
-            trkAlpha.Size = new Size(230, 32);
+            trkAlpha.Location = Theme.P(74, 94);
+            trkAlpha.Size = Theme.Sz(230, 32);
             trkAlpha.ValueChanged += OnAlphaChanged;
 
             lblAlphaVal = new Label();
             lblAlphaVal.Text = "255";
-            lblAlphaVal.Location = new Point(310, 102);
-            lblAlphaVal.Size = new Size(60, 20);
+            lblAlphaVal.Location = Theme.P(310, 102);
+            lblAlphaVal.Size = Theme.Sz(60, 20);
             Theme.StyleLabel(lblAlphaVal, Theme.Accent);
 
             Label lblAlphaTip = new Label();
             lblAlphaTip.Text = "(拖动即时生效，作用于所选窗口)";
-            lblAlphaTip.Location = new Point(368, 102);
-            lblAlphaTip.Size = new Size(126, 34);
+            lblAlphaTip.Location = Theme.P(368, 102);
+            lblAlphaTip.Size = Theme.Sz(126, 34);
             Theme.StyleLabel(lblAlphaTip, Theme.TextDim);
 
             grpOps.Controls.Add(lblAlpha);
@@ -183,116 +183,131 @@ namespace WindowTool
             grpOps.Controls.Add(lblAlphaVal);
             grpOps.Controls.Add(lblAlphaTip);
 
-            btnBlur = GNewBtn(grpOps, "毛玻璃 开/关", new Point(14, 130), new Size(110, 27), OnBlur, false);
-            Label lblBlurTip = new Label();
-            lblBlurTip.Text = "窗口美化：亚克力/模糊效果（部分系统版本可能不支持）";
-            lblBlurTip.Location = new Point(132, 135);
-            lblBlurTip.Size = new Size(360, 18);
-            Theme.StyleLabel(lblBlurTip, Theme.TextDim);
-            grpOps.Controls.Add(lblBlurTip);
-
             grpBg = new DarkGroupBox();
             grpBg.Text = "背景";
-            grpBg.Location = new Point(12, 262);
-            grpBg.Size = new Size(500, 146);
+            grpBg.Location = Theme.P(12, 228);
+            grpBg.Size = Theme.Sz(500, 146);
             grpBg.ForeColor = Theme.Text;
 
-            btnImgBg = GNewBtn(grpBg, "应用图片背景(⑦)", new Point(14, 22), new Size(136, 27), OnImageBg, false);
-            btnVidBg = GNewBtn(grpBg, "应用视频背景(⑧)", new Point(158, 22), new Size(136, 27), OnVideoBg, false);
+            btnImgBg = GNewBtn(grpBg, "应用图片背景(⑦)", Theme.P(14, 22), Theme.Sz(136, 27), OnImageBg, false);
+            btnVidBg = GNewBtn(grpBg, "应用视频背景(⑧)", Theme.P(158, 22), Theme.Sz(136, 27), OnVideoBg, false);
             numBgAlpha = new NumericUpDown();
             numBgAlpha.Minimum = 60;
             numBgAlpha.Maximum = 250;
             numBgAlpha.Value = 160;
-            numBgAlpha.Location = new Point(304, 25);
-            numBgAlpha.Size = new Size(54, 23);
+            numBgAlpha.Location = Theme.P(304, 25);
+            numBgAlpha.Size = Theme.Sz(54, 23);
             Theme.StyleNum(numBgAlpha);
             numBgAlpha.ValueChanged += (s, e) => SaveSettings();
             Label lblBgNum = new Label();
             lblBgNum.Text = "背景时透明度";
-            lblBgNum.Location = new Point(362, 28);
-            lblBgNum.Size = new Size(96, 18);
+            lblBgNum.Location = Theme.P(362, 28);
+            lblBgNum.Size = Theme.Sz(96, 18);
             Theme.StyleLabel(lblBgNum, Theme.TextDim);
 
-            btnFolderPick = GNewBtn(grpBg, "选择文件夹轮播", new Point(14, 52), new Size(118, 27), OnFolderPick, false);
+            btnFolderPick = GNewBtn(grpBg, "选择文件夹轮播", Theme.P(14, 52), Theme.Sz(112, 27), OnFolderPick, false);
             cmbVidMode = new ComboBox();
             cmbVidMode.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbVidMode.Items.AddRange(new object[] { "填充裁剪", "完整显示", "变形铺满" });
             cmbVidMode.SelectedIndex = 0;
-            cmbVidMode.Location = new Point(138, 54);
-            cmbVidMode.Size = new Size(110, 23);
+            cmbVidMode.Location = Theme.P(130, 54);
+            cmbVidMode.Size = Theme.Sz(104, 23);
             Theme.StyleCombo(cmbVidMode);
             cmbVidMode.SelectedIndexChanged += OnFitChanged;
-            btnBgOff = GNewBtn(grpBg, "取消背景", new Point(254, 52), new Size(84, 27), OnBgOff, false);
+            btnBgOff = GNewBtn(grpBg, "取消背景", Theme.P(238, 52), Theme.Sz(76, 27), OnBgOff, false);
             numMin = new NumericUpDown();
             numMin.Minimum = 0;
             numMin.Maximum = 120;
             numMin.Value = 0;
-            numMin.Location = new Point(344, 55);
-            numMin.Size = new Size(42, 23);
+            numMin.Location = Theme.P(320, 55);
+            numMin.Size = Theme.Sz(34, 23);
             Theme.StyleNum(numMin);
             numMin.ValueChanged += (s, e) => SaveSettings();
+            Label lblFen = new Label();
+            lblFen.Text = "分";
+            lblFen.Location = Theme.P(356, 58);
+            lblFen.Size = Theme.Sz(18, 18);
+            Theme.StyleLabel(lblFen, Theme.TextDim);
+            numSec = new NumericUpDown();
+            numSec.Minimum = 0;
+            numSec.Maximum = 59;
+            numSec.Value = 0;
+            numSec.Location = Theme.P(374, 55);
+            numSec.Size = Theme.Sz(34, 23);
+            Theme.StyleNum(numSec);
+            numSec.ValueChanged += (s, e) => SaveSettings();
             lblMinTip = new Label();
-            lblMinTip.Text = "分自切(0关)";
-            lblMinTip.Location = new Point(390, 58);
-            lblMinTip.Size = new Size(100, 18);
+            lblMinTip.Text = "秒自切(0关)";
+            lblMinTip.Location = Theme.P(410, 58);
+            lblMinTip.Size = Theme.Sz(78, 18);
             Theme.StyleLabel(lblMinTip, Theme.TextDim);
 
             chkBgMem = new CheckBox();
             chkBgMem.Text = "记住各窗口背景";
-            chkBgMem.Location = new Point(14, 84);
-            chkBgMem.Size = new Size(128, 22);
+            chkBgMem.Location = Theme.P(14, 84);
+            chkBgMem.Size = Theme.Sz(128, 22);
             Theme.StyleCheck(chkBgMem);
             chkBgMem.CheckedChanged += (s, e) => SaveSettings();
 
             lblBgHint = new Label();
             lblBgHint.Text = "";
-            lblBgHint.Location = new Point(148, 88);
-            lblBgHint.Size = new Size(338, 20);
+            lblBgHint.Location = Theme.P(148, 88);
+            lblBgHint.Size = Theme.Sz(338, 20);
             Theme.StyleLabel(lblBgHint, Theme.Green);
 
             grpBg.Controls.Add(numBgAlpha);
             grpBg.Controls.Add(lblBgNum);
             grpBg.Controls.Add(cmbVidMode);
             grpBg.Controls.Add(numMin);
+            grpBg.Controls.Add(lblFen);
+            grpBg.Controls.Add(numSec);
             grpBg.Controls.Add(lblMinTip);
             grpBg.Controls.Add(chkBgMem);
             grpBg.Controls.Add(lblBgHint);
 
             grpUU = new DarkGroupBox();
             grpUU.Text = "UU远程被控提醒(⑨)";
-            grpUU.Location = new Point(12, 416);
-            grpUU.Size = new Size(500, 84);
+            grpUU.Location = Theme.P(12, 382);
+            grpUU.Size = Theme.Sz(500, 84);
             grpUU.ForeColor = Theme.Text;
 
             chkUU = new CheckBox();
             chkUU.Text = "启用";
-            chkUU.Location = new Point(14, 24);
-            chkUU.Size = new Size(58, 22);
+            chkUU.Location = Theme.P(14, 24);
+            chkUU.Size = Theme.Sz(58, 22);
             Theme.StyleCheck(chkUU);
             chkUU.CheckedChanged += OnUuToggle;
 
-            Label l1 = new Label(); l1.Text = "进程名含:"; l1.Location = new Point(80, 27); l1.Size = new Size(66, 18);
+            Label l1 = new Label(); l1.Text = "进程名含:"; l1.Location = Theme.P(80, 27); l1.Size = Theme.Sz(66, 18);
             Theme.StyleLabel(l1, Theme.TextDim);
-            txtKwProc = new TextBox(); txtKwProc.Text = "uu"; txtKwProc.Location = new Point(148, 24); txtKwProc.Size = new Size(86, 22);
+            txtKwProc = new TextBox(); txtKwProc.Text = "uu"; txtKwProc.Location = Theme.P(148, 24); txtKwProc.Size = Theme.Sz(86, 22);
             Theme.StyleText(txtKwProc);
-            Label l2 = new Label(); l2.Text = "窗口标题含:"; l2.Location = new Point(244, 27); l2.Size = new Size(74, 18);
+            Label l2 = new Label(); l2.Text = "窗口标题含:"; l2.Location = Theme.P(244, 27); l2.Size = Theme.Sz(74, 18);
             Theme.StyleLabel(l2, Theme.TextDim);
-            txtKwTitle = new TextBox(); txtKwTitle.Text = "远程"; txtKwTitle.Location = new Point(320, 24); txtKwTitle.Size = new Size(76, 22);
+            txtKwTitle = new TextBox(); txtKwTitle.Text = "远程"; txtKwTitle.Location = Theme.P(320, 24); txtKwTitle.Size = Theme.Sz(76, 22);
             Theme.StyleText(txtKwTitle);
-            btnTestAlert = GNewBtn(grpUU, "测试弹窗", new Point(406, 22), new Size(84, 25), OnUuTest, false);
+            btnTestAlert = GNewBtn(grpUU, "测试弹窗", Theme.P(406, 22), Theme.Sz(84, 25), OnUuTest, false);
+
+            chkLag = new CheckBox();
+            chkLag.Text = "卡顿也提醒";
+            chkLag.Location = Theme.P(14, 54);
+            chkLag.Size = Theme.Sz(100, 22);
+            Theme.StyleCheck(chkLag);
+            chkLag.CheckedChanged += (s, e) => { UuConfigureLive(); SaveSettings(); };
 
             lblUUStatus = new Label();
             lblUUStatus.Text = "提示：检测为尽力匹配，可修改关键词；被控时鼠标旁显示“你已被控制”。";
-            lblUUStatus.Location = new Point(14, 54);
-            lblUUStatus.Size = new Size(476, 18);
+            lblUUStatus.Location = Theme.P(118, 57);
+            lblUUStatus.Size = Theme.Sz(370, 18);
             Theme.StyleLabel(lblUUStatus, Theme.TextDim);
 
             grpUU.Controls.Add(l1); grpUU.Controls.Add(txtKwProc); grpUU.Controls.Add(l2); grpUU.Controls.Add(txtKwTitle);
+            grpUU.Controls.Add(chkLag);
             grpUU.Controls.Add(lblUUStatus);
 
             lblKeys = new Label();
-            lblKeys.Location = new Point(12, 506);
-            lblKeys.Size = new Size(500, 34);
+            lblKeys.Location = Theme.P(12, 472);
+            lblKeys.Size = Theme.Sz(500, 34);
             Theme.StyleLabel(lblKeys, Theme.TextDim);
             lblKeys.Tag = "keys";
             lblKeys.Font = new Font("微软雅黑", 8.25f);
@@ -407,6 +422,8 @@ namespace WindowTool
                 numBgAlpha.Value = ClampDec(x, numBgAlpha.Minimum, numBgAlpha.Maximum);
             if (d.TryGetValue("switchMin", out v) && decimal.TryParse(v, out x))
                 numMin.Value = ClampDec(x, numMin.Minimum, numMin.Maximum);
+            if (d.TryGetValue("switchSec", out v) && decimal.TryParse(v, out x))
+                numSec.Value = ClampDec(x, numSec.Minimum, numSec.Maximum);
             if (d.TryGetValue("fitMode", out v))
             {
                 int fi;
@@ -439,6 +456,7 @@ namespace WindowTool
             }
 
             chkUU.Checked = d.TryGetValue("uuEnabled", out v) && v == "1";
+            chkLag.Checked = d.TryGetValue("uuLag", out v) && v == "1";
             loading = false;
         }
 
@@ -450,11 +468,13 @@ namespace WindowTool
                 var sb = new StringBuilder();
                 sb.AppendLine("bgAlpha=" + numBgAlpha.Value);
                 sb.AppendLine("switchMin=" + numMin.Value);
+                sb.AppendLine("switchSec=" + numSec.Value);
                 sb.AppendLine("fitMode=" + cmbVidMode.SelectedIndex);
                 sb.AppendLine("radius=" + (int)numRadius.Value);
                 sb.AppendLine("uuProc=" + txtKwProc.Text);
                 sb.AppendLine("uuTitle=" + txtKwTitle.Text);
                 sb.AppendLine("uuEnabled=" + (chkUU.Checked ? "1" : "0"));
+                sb.AppendLine("uuLag=" + (chkLag.Checked ? "1" : "0"));
                 sb.AppendLine("silentStart=" + (chkSilent.Checked ? "1" : "0"));
                 sb.AppendLine("bgMem=" + (chkBgMem.Checked ? "1" : "0"));
                 sb.AppendLine("dark=" + (chkDark.Checked ? "1" : "0"));
@@ -805,7 +825,6 @@ namespace WindowTool
             btnImgBg.Enabled = ok;
             btnVidBg.Enabled = ok;
             btnBgOff.Enabled = bgForms.Count > 0;
-            btnBlur.Enabled = ok;
 
             var h = Selected();
             if (Ok(h))
@@ -916,17 +935,6 @@ namespace WindowTool
             }
             else Hint("该窗口当前没有背景。");
             UpdateButtonStates();
-        }
-
-        void OnBlur(object sender, EventArgs e)
-        {
-            var h = Selected();
-            if (!Ok(h)) return;
-            bool on = !Manager.IsBlurred(h);
-            if (Manager.ApplyBlur(h, on))
-                Hint(on ? "已开启毛玻璃效果；若无变化可能是系统不支持该窗口。" : "已关闭毛玻璃效果。");
-            else
-                Hint("毛玻璃设置失败。");
         }
 
         void ChangeAlphaOn(IntPtr h, int delta)
@@ -1175,9 +1183,10 @@ namespace WindowTool
             try
             {
                 if (videoFiles == null || videoFiles.Length <= 1) return;
-                if ((int)numMin.Value <= 0) return;
+                int total = (int)numMin.Value * 60 + (int)numSec.Value;
+                if (total <= 0) return;
                 if (!Ok(playlistTarget)) return;
-                if ((DateTime.Now - lastSwitch).TotalMinutes >= (double)numMin.Value)
+                if ((DateTime.Now - lastSwitch).TotalSeconds >= total)
                     ApplyRandomVideoCore(playlistTarget, true);
             }
             catch (Exception ex) { Program.Log(ex); }
@@ -1211,16 +1220,21 @@ namespace WindowTool
 
         void OnBgOff(object sender, EventArgs e) { DoBgOffCore(Selected()); }
 
+        void UuConfigureLive()
+        {
+            UuMonitor.Configure(txtKwProc.Text, txtKwTitle.Text, chkLag.Checked);
+        }
+
         void OnUuToggle(object sender, EventArgs e)
         {
-            UuMonitor.Configure(txtKwProc.Text, txtKwTitle.Text);
+            UuConfigureLive();
             if (chkUU.Checked) UuMonitor.Start(); else UuMonitor.Stop();
             SaveSettings();
         }
 
         void OnUuKeywords(object sender, EventArgs e)
         {
-            if (chkUU.Checked) UuMonitor.Configure(txtKwProc.Text, txtKwTitle.Text);
+            if (chkUU.Checked) UuConfigureLive();
             SaveSettings();
         }
 
@@ -1299,7 +1313,6 @@ namespace WindowTool
             UuMonitor.Stop();
             UnregisterHotkeys();
             capture.Dispose();
-            Manager.DisableAllBlurs();
             if (tray != null)
             {
                 tray.Visible = false;
@@ -1311,6 +1324,9 @@ namespace WindowTool
                 Manager.ClearBg(kv.Key);
                 CloseBgForm(kv.Key);
             }
+            // 退出自动还原：取消所有②、还原置顶/透明度/背景等一切修改
+            try { Manager.CancelAll(); } catch { }
+            try { Manager.RestoreAll(); } catch { }
             base.OnFormClosed(e);
         }
     }

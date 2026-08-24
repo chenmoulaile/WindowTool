@@ -14,7 +14,7 @@ namespace WindowTool
         public IntPtr BgHwnd;
         public byte BgAlpha;
         public byte LastAlpha = 255;
-        public bool BlurOn;
+        public bool TopByUs;   // 置顶是否由本工具设置（退出时用于还原）
     }
 
     static class Manager
@@ -39,6 +39,17 @@ namespace WindowTool
                 s.OrigExStyle = Native.GetWindowLong(h, Native.GWL_EXSTYLE);
                 s.WasLayered = (s.OrigExStyle & Native.WS_EX_LAYERED) != 0;
                 s.RestoreAlpha = 255;
+                if (s.WasLayered)
+                {
+                    // 记录窗口被本工具修改前的透明度，退出时可还原
+                    try
+                    {
+                        uint key; byte a; uint flags;
+                        if (Native.GetLayeredWindowAttributes(h, out key, out a, out flags) && (flags & Native.LWA_ALPHA) != 0)
+                            s.RestoreAlpha = a == 0 ? (byte)255 : a;
+                    }
+                    catch { }
+                }
                 states[h] = s;
             }
             return s;
@@ -63,6 +74,12 @@ namespace WindowTool
 
         public static void SetTopmost(IntPtr h, bool topmost)
         {
+            SetTopmost(h, topmost, true);
+        }
+
+        public static void SetTopmost(IntPtr h, bool topmost, bool track)
+        {
+            if (track) GetInfo(h).TopByUs = topmost;
             Native.SetWindowPos(h, topmost ? Native.HWND_TOPMOST : Native.HWND_NOTOPMOST, 0, 0, 0, 0,
                 Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
         }
@@ -81,59 +98,6 @@ namespace WindowTool
             if ((ex & Native.WS_EX_LAYERED) == 0)
                 Native.SetWindowLong(h, Native.GWL_EXSTYLE, ex | Native.WS_EX_LAYERED);
             Native.SetLayeredWindowAttributes(h, 0, alpha, Native.LWA_ALPHA);
-        }
-
-        public static bool IsBlurred(IntPtr h)
-        {
-            var s = Find(h);
-            return s != null && s.BlurOn;
-        }
-
-        public static bool ApplyBlur(IntPtr h, bool on)
-        {
-            try
-            {
-                var pol = new Native.ACCENT_POLICY
-                {
-                    AccentState = on ? Native.ACCENT_ACRYLIC : Native.ACCENT_DISABLED,
-                    AccentFlags = on ? 2 : 0,
-                    GradientColor = on ? 0x99FFFFFFu : 0u,
-                    AnimationId = 0
-                };
-                int size = Marshal.SizeOf(pol);
-                IntPtr ptr = Marshal.AllocHGlobal(size);
-                try
-                {
-                    Marshal.StructureToPtr(pol, ptr, false);
-                    var data = new Native.WCAATTRIB { Attribute = Native.WCA_ACCENT_POLICY, Data = ptr, SizeOfData = size };
-                    int hr = Native.SetWindowCompositionAttribute(h, ref data);
-                    if (on && hr == 0)
-                    {
-                        pol.AccentState = Native.ACCENT_BLURBEHIND;
-                        Marshal.StructureToPtr(pol, ptr, false);
-                        data = new Native.WCAATTRIB { Attribute = Native.WCA_ACCENT_POLICY, Data = ptr, SizeOfData = size };
-                        hr = Native.SetWindowCompositionAttribute(h, ref data);
-                    }
-                }
-                finally { Marshal.FreeHGlobal(ptr); }
-
-                var m = new Native.MARGINS();
-                if (on) { m.Left = -1; m.Right = -1; m.Top = -1; m.Bottom = -1; }
-                Native.DwmExtendFrameIntoClientArea(h, ref m);
-
-                GetInfo(h).BlurOn = on;
-                return true;
-            }
-            catch (Exception ex) { Program.Log(ex); return false; }
-        }
-
-        public static void DisableAllBlurs()
-        {
-            List<IntPtr> snap = null;
-            foreach (var kv in states)
-                if (kv.Value.BlurOn) { if (snap == null) snap = new List<IntPtr>(); snap.Add(kv.Key); }
-            if (snap != null)
-                foreach (var h in snap) ApplyBlur(h, false);
         }
 
         public static void ApplyOp2(IntPtr h)
@@ -165,10 +129,11 @@ namespace WindowTool
             var s = Find(h);
             if (s == null || !s.Op2Active) return false;
             s.Op2Active = false;
+            s.TopByUs = false;
             lock (pinOrder) pinOrder.Remove(h);
 
             RestoreLayerAndAlpha(s);
-            SetTopmost(h, false);
+            SetTopmost(h, false, false);
             return true;
         }
 
@@ -226,6 +191,38 @@ namespace WindowTool
             foreach (var h in PinnedSnapshot())
                 if (CancelOp2(h)) n++;
             return n;
+        }
+
+        // 退出时调用：还原本工具对窗口做过的一切（置顶/穿透/透明度/背景样式）
+        public static void RestoreAll()
+        {
+            IntPtr[] snap;
+            lock (states) { snap = new IntPtr[states.Count]; states.Keys.CopyTo(snap, 0); }
+            foreach (var h in snap)
+            {
+                try
+                {
+                    var s = Find(h);
+                    if (s == null || !Native.IsWindow(h)) continue;
+                    if (s.Op2Active) { CancelOp2(h); continue; }
+
+                    // 普通窗口：还原分层样式与透明度
+                    if (s.WasLayered)
+                        Native.SetLayeredWindowAttributes(h, 0, s.RestoreAlpha, Native.LWA_ALPHA);
+                    else
+                    {
+                        int ex = Native.GetWindowLong(h, Native.GWL_EXSTYLE);
+                        if ((ex & Native.WS_EX_LAYERED) != 0)
+                            Native.SetWindowLong(h, Native.GWL_EXSTYLE, ex & ~Native.WS_EX_LAYERED);
+                    }
+                    if (s.TopByUs)
+                    {
+                        SetTopmost(h, false, false);
+                        s.TopByUs = false;
+                    }
+                }
+                catch (Exception ex) { Program.Log(ex); }
+            }
         }
 
         static bool IsMovableNeighbor(IntPtr h)

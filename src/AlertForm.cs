@@ -9,38 +9,55 @@ namespace WindowTool
     {
         readonly Timer follow;
         readonly Timer hideT;
+        readonly Label lbl;
 
         public AlertForm()
         {
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
-            Size = new Size(72, 20);
-            BackColor = Color.White;
+            Size = Theme.Sz(96, 26);
+            BackColor = Color.FromArgb(207, 34, 46); // GitHub danger 红
             DoubleBuffered = true;
 
-            var lbl = new Label
+            lbl = new Label
             {
                 Text = "你已被控制",
                 Dock = DockStyle.Fill,
-                ForeColor = Theme.Text,
+                ForeColor = Color.White,
                 BackColor = Color.Transparent,
-                Font = new Font("微软雅黑", 8f, FontStyle.Bold),
+                Font = new Font("微软雅黑", 9f, FontStyle.Bold),
                 TextAlign = ContentAlignment.MiddleCenter
             };
             Controls.Add(lbl);
 
-            Region = new Region(Theme.RoundRect(new Rectangle(0, 0, Width, Height), 8));
+            ApplyShape();
 
             follow = new Timer { Interval = 30 };
             follow.Tick += (s, e) =>
             {
                 var p = Cursor.Position;
-                Location = new Point(p.X + 12, p.Y + 12);
+                Location = new Point(p.X + Theme.S(14), p.Y + Theme.S(14));
             };
 
             hideT = new Timer { Interval = 1500 };
             hideT.Tick += (s, e) => SetVisible(false);
+        }
+
+        void ApplyShape()
+        {
+            Region old = Region;
+            Region = new Region(Theme.RoundRect(new Rectangle(0, 0, Width, Height), Theme.CornerRadius(Width, Height)));
+            if (old != null) old.Dispose();
+        }
+
+        public void SetText(string text)
+        {
+            if (lbl.Text == text) return;
+            lbl.Text = text;
+            int w = TextRenderer.MeasureText(text, lbl.Font).Width + Theme.S(20);
+            Size = new Size(Math.Max(Theme.S(72), w), Theme.S(26));
+            ApplyShape();
         }
 
         protected override bool ShowWithoutActivation { get { return true; } }
@@ -59,8 +76,8 @@ namespace WindowTool
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            using (var path = Theme.RoundRect(new Rectangle(0, 0, Width - 1, Height - 1), 8))
-            using (var pen = new Pen(Theme.Border))
+            using (var path = Theme.RoundRect(new Rectangle(0, 0, Width - 1, Height - 1), Theme.CornerRadius(Width, Height)))
+            using (var pen = new Pen(Color.FromArgb(139, 20, 23)))
                 g.DrawPath(pen, path);
         }
 
@@ -69,7 +86,7 @@ namespace WindowTool
             if (v && !Visible)
             {
                 var p = Cursor.Position;
-                Location = new Point(p.X + 12, p.Y + 12);
+                Location = new Point(p.X + Theme.S(14), p.Y + Theme.S(14));
                 Show();
                 follow.Start();
                 hideT.Stop();

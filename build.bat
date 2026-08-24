@@ -8,7 +8,7 @@ set REFS=/r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Window
 set ICO=
 if exist app.ico set ICO=/win32icon:app.ico
 
-"%CSC%" /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ %ICO% /out:WindowTool.exe %REFS% src\*.cs
+"%CSC%" /nologo /codepage:65001 /target:winexe /platform:anycpu /optimize+ %ICO% /win32manifest:app.manifest /out:WindowTool.exe %REFS% src\*.cs
 if %errorlevel%==0 (
   echo BUILD OK - WindowTool.exe
 ) else (

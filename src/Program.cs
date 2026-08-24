@@ -1,4 +1,5 @@
 using System;
+using System.Drawing;
 using System.IO;
 using System.Threading;
 using System.Windows.Forms;
@@ -30,6 +31,15 @@ namespace WindowTool
 
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+
+            // 系统DPI → 全局缩放（清单已声明 dpiAware，高分屏下按真实DPI布局，不再被系统拉伸模糊）
+            try
+            {
+                using (var g = Graphics.FromHwnd(IntPtr.Zero))
+                    Theme.Scale = Math.Max(1f, Math.Min(4f, g.DpiX / 96f));
+            }
+            catch { Theme.Scale = 1f; }
+
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (s, e) => Report(e.Exception);
             AppDomain.CurrentDomain.UnhandledException += (s, e) => Log(e.ExceptionObject as Exception);
