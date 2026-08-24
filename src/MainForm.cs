@@ -33,12 +33,12 @@ namespace WindowTool
         const int HK_VRAND = 12;
 
         ComboBox comboWins;
-        Button btnRefresh, btnPick, btnTopOnly, btnUnTop, btnOp2, btnCancelOp2, btnCancelAll, btnUp, btnDown, btnBottom, btnImgBg, btnVidBg, btnBgOff, btnTestAlert, btnFolderPick;
+        Button btnRefresh, btnPick, btnTopOnly, btnUnTop, btnOp2, btnCancelOp2, btnCancelAll, btnUp, btnDown, btnBottom, btnImgBg, btnVidBg, btnBgOff, btnTestAlert, btnFolderPick, btnBlur;
         DarkSlider trkAlpha;
         Label lblSel, lblAlphaVal, lblBgHint, lblUUStatus, lblKeys, lblMinTip;
         GroupBox grpOps, grpBg, grpUU;
         NumericUpDown numBgAlpha, numMin, numRadius;
-        CheckBox chkUU;
+        CheckBox chkUU, chkDark;
         ComboBox cmbVidMode;
         TextBox txtKwProc, txtKwTitle;
         Timer tmr, tmrBg, tmrAuto;
@@ -84,27 +84,34 @@ namespace WindowTool
 
             lblSel = new Label();
             lblSel.Location = new Point(16, 14);
-            lblSel.Size = new Size(246, 26);
-            lblSel.ForeColor = Theme.TextDim;
+            lblSel.Size = new Size(200, 26);
+            Theme.StyleLabel(lblSel, Theme.TextDim);
             lblSel.Text = "当前窗口：(未选择)";
 
             chkAutoRun = new CheckBox();
             chkAutoRun.Text = "开机启动";
-            chkAutoRun.Location = new Point(264, 10);
+            chkAutoRun.Location = new Point(220, 10);
             chkAutoRun.Size = new Size(74, 24);
             Theme.StyleCheck(chkAutoRun);
             chkAutoRun.CheckedChanged += (s, e) => { SetAutoRun(chkAutoRun.Checked); SaveSettings(); };
 
             chkSilent = new CheckBox();
             chkSilent.Text = "静默";
-            chkSilent.Location = new Point(340, 10);
+            chkSilent.Location = new Point(296, 10);
             chkSilent.Size = new Size(52, 24);
             Theme.StyleCheck(chkSilent);
             chkSilent.CheckedChanged += (s, e) => SaveSettings();
 
+            chkDark = new CheckBox();
+            chkDark.Text = "暗色";
+            chkDark.Location = new Point(350, 10);
+            chkDark.Size = new Size(52, 24);
+            Theme.StyleCheck(chkDark);
+            chkDark.CheckedChanged += OnDarkToggle;
+
             Label lblRadTip = new Label();
             lblRadTip.Text = "圆角:";
-            lblRadTip.Location = new Point(396, 14);
+            lblRadTip.Location = new Point(406, 14);
             lblRadTip.Size = new Size(34, 18);
             Theme.StyleLabel(lblRadTip, Theme.TextDim);
 
@@ -112,13 +119,14 @@ namespace WindowTool
             numRadius.Minimum = 0;
             numRadius.Maximum = 20;
             numRadius.Value = 10;
-            numRadius.Location = new Point(432, 11);
+            numRadius.Location = new Point(440, 11);
             numRadius.Size = new Size(44, 23);
             Theme.StyleNum(numRadius);
             numRadius.ValueChanged += OnRadiusChanged;
 
             Controls.Add(lblRadTip);
             Controls.Add(chkAutoRun);
+            Controls.Add(chkDark);
 
             comboWins = new ComboBox();
             comboWins.Location = new Point(12, 44);
@@ -285,7 +293,8 @@ namespace WindowTool
             lblKeys = new Label();
             lblKeys.Location = new Point(12, 506);
             lblKeys.Size = new Size(500, 34);
-            lblKeys.ForeColor = Color.FromArgb(124, 134, 168);
+            Theme.StyleLabel(lblKeys, Theme.TextDim);
+            lblKeys.Tag = "keys";
             lblKeys.Font = new Font("微软雅黑", 8.25f);
             lblKeys.Text = "全局热键(Ctrl+Alt+): 1置顶切换 2穿透置顶 3上移层 4下移层 5取消本窗② 6取消全部② 7图片背景 8视频背景 0取消背景 R随机切视频 ←→调透明度";
 
@@ -334,33 +343,13 @@ namespace WindowTool
         void OnRadiusChanged(object sender, EventArgs e)
         {
             Theme.Radius = (int)numRadius.Value;
-            ReapplyRadii();
+            Theme.Restyle(this);
             SaveSettings();
         }
 
         void ReapplyRadii()
         {
-            ApplyRadiiRecursive(Controls);
-            InvalidateAllGroups(this);
-        }
-
-        static void InvalidateAllGroups(Control root)
-        {
-            foreach (Control c in root.Controls)
-            {
-                if (c is DarkGroupBox || c is DarkSlider) c.Invalidate();
-                InvalidateAllGroups(c);
-            }
-        }
-
-        static void ApplyRadiiRecursive(Control.ControlCollection cc)
-        {
-            foreach (Control c in cc)
-            {
-                if (c is Button) Theme.ApplyRegion(c);
-                else if (c is TextBox || c is NumericUpDown || c is ComboBox) Theme.ApplyRegion(c);
-                ApplyRadiiRecursive(c.Controls);
-            }
+            Theme.Restyle(this);
         }
 
         string SettingsPath()
@@ -433,6 +422,9 @@ namespace WindowTool
             if (d.TryGetValue("uuTitle", out v)) txtKwTitle.Text = v;
             chkSilent.Checked = d.TryGetValue("silentStart", out v) && v == "1";
             startupHidden = chkSilent.Checked;
+            chkDark.Checked = d.TryGetValue("dark", out v) && v == "1";
+            if (Theme.IsDark != chkDark.Checked) Theme.SetDark(chkDark.Checked);
+            BackColor = Theme.Bg;
             chkAutoRun.Checked = GetAutoRun();
             chkBgMem.Checked = !d.TryGetValue("bgMem", out v) || v == "1";
 
@@ -465,6 +457,7 @@ namespace WindowTool
                 sb.AppendLine("uuEnabled=" + (chkUU.Checked ? "1" : "0"));
                 sb.AppendLine("silentStart=" + (chkSilent.Checked ? "1" : "0"));
                 sb.AppendLine("bgMem=" + (chkBgMem.Checked ? "1" : "0"));
+                sb.AppendLine("dark=" + (chkDark.Checked ? "1" : "0"));
 
                 var lines = new List<string>();
                 if (chkBgMem.Checked)
@@ -530,6 +523,10 @@ namespace WindowTool
             var menu = new ContextMenuStrip();
             menu.Items.Add("显示主界面", null, (s, e) => ShowMain());
             menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("选择图片背景", null, (s, e) => TrayApplyBg(true));
+            menu.Items.Add("选择视频背景", null, (s, e) => TrayApplyBg(false));
+            menu.Items.Add("取消背景", null, (s, e) => TrayBgOff());
+            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出", null, (s, e) => { reallyExit = true; Close(); });
 
             tray = new NotifyIcon();
@@ -538,8 +535,54 @@ namespace WindowTool
             tray.Text = "窗口置顶助手";
             tray.ContextMenuStrip = menu;
             tray.Visible = true;
-            tray.Click += (s, e) => ShowMain();
+            // 只响应左键：右键交给托盘小菜单，不再弹主界面
+            tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowMain(); };
             tray.DoubleClick += (s, e) => ShowMain();
+        }
+
+        IntPtr RequireMenuTarget()
+        {
+            IntPtr t = HotTarget();
+            if (!Ok(t))
+            {
+                Balloon("请先打开主界面选择一个目标窗口。");
+                return IntPtr.Zero;
+            }
+            return t;
+        }
+
+        void Balloon(string text)
+        {
+            if (tray == null) return;
+            try
+            {
+                tray.BalloonTipTitle = "窗口置顶助手";
+                tray.BalloonTipText = text;
+                tray.ShowBalloonTip(1500);
+            }
+            catch { }
+        }
+
+        void TrayApplyBg(bool image)
+        {
+            IntPtr t = RequireMenuTarget();
+            if (!Ok(t)) return;
+            if (image) PickImageAndApply(t); else PickVideoAndApply(t);
+        }
+
+        void TrayBgOff()
+        {
+            IntPtr t = RequireMenuTarget();
+            if (!Ok(t)) return;
+            bool had = Manager.ClearBg(t);
+            if (had)
+            {
+                CloseBgForm(t);
+                videoFiles = null;
+                playlistTarget = IntPtr.Zero;
+                UpdateButtonStates();
+            }
+            Balloon(had ? "已取消背景并还原窗口样式。" : "该窗口当前没有背景。");
         }
 
         void ShowMain()
@@ -616,7 +659,21 @@ namespace WindowTool
                 DispatchHotkey(m.WParam.ToInt32());
                 return;
             }
+            if (Program.WM_ALREADY_RUNNING != 0 && m.Msg == Program.WM_ALREADY_RUNNING)
+            {
+                // 又一个本程序实例启动了：已互斥退出，这里把已有主界面拉起来
+                try { BeginInvoke(new Action(ActivateSelf)); } catch { }
+                return;
+            }
             base.WndProc(ref m);
+        }
+
+        void ActivateSelf()
+        {
+            if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
+            Show();
+            Native.SetForegroundWindow(Handle);
+            Activate();
         }
 
         IntPtr HotTarget()
@@ -679,9 +736,26 @@ namespace WindowTool
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            int on = 1;
-            Native.DwmSetWindowAttribute(Handle, 20, ref on, 4);
-            Native.DwmSetWindowAttribute(Handle, 19, ref on, 4);
+            // Win11: 系统级圆角窗口（Win10 上调用失败会被忽略）
+            int pref = 2;
+            Native.DwmSetWindowAttribute(Handle, 33, ref pref, 4);
+            UpdateTitleBarTheme();
+        }
+
+        void UpdateTitleBarTheme()
+        {
+            int dark = Theme.IsDark ? 1 : 0;
+            Native.DwmSetWindowAttribute(Handle, 20, ref dark, 4);
+            Native.DwmSetWindowAttribute(Handle, 19, ref dark, 4);
+        }
+
+        void OnDarkToggle(object sender, EventArgs e)
+        {
+            Theme.SetDark(chkDark.Checked);
+            BackColor = Theme.Bg;
+            UpdateTitleBarTheme();
+            Theme.Restyle(this);
+            SaveSettings();
         }
 
         bool Ok(IntPtr h) { return h != IntPtr.Zero && Native.IsWindow(h); }

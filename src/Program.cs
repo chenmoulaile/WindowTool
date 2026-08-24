@@ -19,7 +19,12 @@ namespace WindowTool
             single = new Mutex(true, MutexName, out created);
             if (!created)
             {
-                Native.PostMessage(Native.HWND_BROADCAST, WM_ALREADY_RUNNING, IntPtr.Zero, IntPtr.Zero);
+                // 已有实例：广播唤醒其主界面；短暂重试避免首个实例窗口尚未创建时消息丢失
+                for (int i = 0; i < 20; i++)
+                {
+                    Native.PostMessage(Native.HWND_BROADCAST, WM_ALREADY_RUNNING, IntPtr.Zero, IntPtr.Zero);
+                    Thread.Sleep(50);
+                }
                 return;
             }
 

@@ -68,9 +68,7 @@ namespace WindowTool
         {
             int max = Math.Max(0, Math.Min(width, height) / 2 - 1);
             int r = Radius;
-            if (r > max) r = max;
-            if (r > 10) r = 10;
-            return r;
+            return r > max ? max : r;
         }
 
         public static GraphicsPath RoundRect(Rectangle r, int radius)
@@ -84,14 +82,22 @@ namespace WindowTool
                 p.AddRectangle(r);
                 return p;
             }
-            int d = rad * 2;
-            int x = r.X, y = r.Y, w = r.Width, h = r.Height;
+            float d = rad * 2f;
+            float x = r.X, y = r.Y, w = r.Width, h = r.Height;
             p.AddArc(x, y, d, d, 180, 90);
             p.AddArc(x + w - d, y, d, d, 270, 90);
             p.AddArc(x + w - d, y + h - d, d, d, 0, 90);
             p.AddArc(x, y + h - d, d, d, 90, 90);
             p.CloseFigure();
             return p;
+        }
+
+        // 找到一个不透明祖先的背景色：自绘圆角控件的四角用它擦底，避免透明父控件导致四角发白/发黑
+        public static Color SolidBack(Control c)
+        {
+            Control p = c.Parent;
+            while (p != null && p.BackColor.A == 0) p = p.Parent;
+            return p == null ? Bg : p.BackColor;
         }
 
         public static void StyleButton(Button b, bool primary)
@@ -150,6 +156,56 @@ namespace WindowTool
             l.ForeColor = fore;
             l.Font = FontUi;
             l.BackColor = Color.Transparent;
+            l.Tag = RoleOf(fore);
+        }
+
+        static string RoleOf(Color c)
+        {
+            if (c == Accent) return "accent";
+            if (c == Green) return "green";
+            if (c == Text) return "text";
+            return "dim";
+        }
+
+        public static void Restyle(Control root)
+        {
+            ApplyThemeTo(root);
+            foreach (Control child in root.Controls) Restyle(child);
+        }
+
+        static void ApplyThemeTo(Control c)
+        {
+            Button btn = c as Button;
+            if (btn != null)
+            {
+                var db = btn as DarkButton;
+                bool prim = db != null && db.Primary;
+                btn.FlatStyle = FlatStyle.Flat;
+                btn.FlatAppearance.BorderSize = 0;
+                btn.BackColor = Color.Transparent;
+                btn.ForeColor = prim ? Color.White : Text;
+                btn.Invalidate();
+                return;
+            }
+            if (c is DarkGroupBox) { c.ForeColor = Text; c.Invalidate(); return; }
+            if (c is DarkSlider) { ((DarkSlider)c).Invalidate(); return; }
+            ComboBox cmb = c as ComboBox;
+            if (cmb != null) { StyleCombo(cmb); return; }
+            NumericUpDown num = c as NumericUpDown;
+            if (num != null) { StyleNum(num); return; }
+            TextBox tb = c as TextBox;
+            if (tb != null) { StyleText(tb); return; }
+            CheckBox chk = c as CheckBox;
+            if (chk != null) { StyleCheck(chk); return; }
+            Label lbl = c as Label;
+            if (lbl != null)
+            {
+                string role = lbl.Tag as string;
+                if (role == "accent") lbl.ForeColor = Accent;
+                else if (role == "green") lbl.ForeColor = Green;
+                else if (role == "text") lbl.ForeColor = Text;
+                else lbl.ForeColor = TextDim;
+            }
         }
     }
 
@@ -182,7 +238,7 @@ namespace WindowTool
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            g.Clear(Parent == null ? Theme.Bg : Parent.BackColor);
+            g.Clear(Theme.SolidBack(this));
 
             int rad = Theme.CornerRadius(Width, Height);
             var rect = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
@@ -235,7 +291,7 @@ namespace WindowTool
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            g.Clear(Parent == null ? Theme.Bg : Parent.BackColor);
+            g.Clear(Theme.SolidBack(this));
             var r = new Rectangle(1, 10, Width - 3, Height - 12);
             int rad = Theme.CornerRadius(r.Width, r.Height);
             using (var path = Theme.RoundRect(r, rad))
