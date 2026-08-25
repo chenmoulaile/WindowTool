@@ -27,3 +27,6 @@ Compress-Archive -Force -Path WindowTool.exe,使用说明.txt,README.md -Destina
 
 - 每次功能改动需同步更新 README.md 与 使用说明.txt
 - 提交信息用英文，一行主题 + 要点列表
+- **只提交不推送**：除非用户明确说"推送/push"，绝不执行 `git push`
+- 本机 git 完整路径：`C:\Program Files\Git\cmd\git.exe`（不在 shell 默认 PATH 里）
+- 远程仓库：https://github.com/chenmoulaile/WindowTool.git
