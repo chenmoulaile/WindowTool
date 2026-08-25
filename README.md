@@ -1,19 +1,19 @@
-# 窗口置顶助手 / WindowTool
+# OI 工具箱 / WindowTool
 
 <p>
   <img src="app.ico" width="64" height="64">
 </p>
 
-免费、绿色的 Windows 桌面窗口管理小工具。单文件、无需安装任何运行库，双击即用。
+免费、绿色的 OIer 桌面工具箱：竞赛环境一键下载部署 + 窗口管理。单文件、无需安装任何运行库，双击即用。
 
 ## 简介
 
-窗口置顶助手 是一款完全本地的桌面工具，无需注册、无需联网、不上传任何数据。让任意窗口置顶、点击穿透、调节图层与透明度，还能给窗口垫上图片/视频背景，并在被远程控制时第一时间提醒你。
+OI 工具箱 是一款完全本机的桌面工具。一半是 **OI 环境一键部署**——Sublime Text、VS Code、Competitive Companion 浏览器插件、MSYS2 工具链（clang/clangd/g++）点一下就装好；另一半是**窗口管理**——置顶、点击穿透、透明度、图片/视频背景，以及被远程控制时第一时间提醒你。
 
 - **免费** — 无付费，无订阅，开源
 - **绿色** — 单文件 exe，依赖系统自带 .NET Framework 4.x
-- **本地** — 所有功能在本机完成，不联网、不上传
-- **实时** — 背景窗口 60ms 跟随目标窗口移动，被控提醒秒级响应
+- **本地** — 所有功能在本机完成，不联网收集任何数据
+- **一键** — OI 环境从零到能写题，下载安装全自动
 
 ## 功能一览
 
@@ -29,6 +29,23 @@
 | ⑨ | UU远程被控提醒 | **内存判定**：UU进程 >100MB=被控、<50MB=解除；被控时红色迷你条跟随鼠标循环提醒，解除时弹「已解除控制」 |
 
 其他：单实例（重复双击唤醒已运行实例）、托盘右键菜单（可选图片/视频背景）、退出自动还原一切修改、DeepSeek 风格暗色主题、圆角可调、高分屏 DPI 感知。
+
+## OI 工具箱
+
+主界面底部的「OI 工具箱」分组，一键部署竞赛环境：
+
+| 按钮 | 作用 |
+|------|------|
+| **Sublime Text** | 自动获取官方最新版本号 → 下载 x64 安装包 → 静默安装 |
+| **VS Code** | 官方 latest 通道下载 x64 User 安装包 → 静默安装 |
+| **SteamCommunity 302** | 打开作者 Dogfight360 的官方页面下载（Steam 社区访问修复） |
+| **Competitive Companion (Chrome)** | 打开 Chrome 商店安装页，点「添加至 Chrome」 |
+| **Competitive Companion (Edge)** | 打开 Edge 商店搜索页安装 |
+| **MSYS2** | 从 repo.msys2.org 下载 latest 安装包 → 静默安装到 `C:\msys64` |
+| **安装 clang/clangd 工具链** | pacman 安装 UCRT64 工具链：`clang`、`clang-tools-extra`(clangd)、`gdb`、`make`、`gcc`，并自动把 `C:\msys64\ucrt64\bin` 加入用户 PATH |
+
+> 装完工具链后**重启 Sublime Text**，LSP 插件 + LSP-clangd 即可正常工作（clangd 在 PATH 中）。
+> 安装日志见 `%TEMP%\WindowTool_oi.log`。
 
 ## 全局热键 (Ctrl+Alt+)
 
@@ -137,7 +154,8 @@ WindowTool/
 ├─ 使用说明.txt        快速上手文档
 └─ src/
    ├─ Program.cs      入口 + 单实例互斥 + 全局异常兜底
-   ├─ MainForm.cs     主界面 + 托盘 + 热键 + 设置持久化
+   ├─ MainForm.cs     主界面 + 托盘 + 热键 + 设置持久化 + OI 工具箱
+   ├─ OiTools.cs      OI 环境下载部署（下载器 / MSYS2 / pacman / PATH）
    ├─ Manager.cs      Win32 窗口状态管理（置顶/穿透/图层/透明度/还原）
    ├─ BgWindow.cs     背景窗体（图片绘制 + WPF MediaElement 视频）
    ├─ Ui.cs           主题 + 自绘控件（按钮/分组框/滑块）

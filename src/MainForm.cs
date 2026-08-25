@@ -36,11 +36,15 @@ namespace WindowTool
         Button btnRefresh, btnPick, btnTopOnly, btnUnTop, btnOp2, btnCancelOp2, btnCancelAll, btnUp, btnDown, btnBottom, btnImgBg, btnVidBg, btnBgOff, btnTestAlert, btnFolderPick;
         DarkSlider trkAlpha;
         Label lblSel, lblAlphaVal, lblBgHint, lblUUStatus, lblKeys, lblMinTip;
-        GroupBox grpOps, grpBg, grpUU;
+        GroupBox grpOps, grpBg, grpUU, grpOI;
         NumericUpDown numBgAlpha, numMin, numSec, numRadius;
         CheckBox chkUU, chkDark, chkLag;
         ComboBox cmbVidMode;
         TextBox txtKwProc, txtKwTitle;
+        Button btnSublime, btnVscode, btn302, btnCcChrome, btnCcEdge, btnMsys2, btnToolchain;
+        ProgressBar pbOi;
+        Label lblOi;
+        bool oiToolchainRunning;
         Timer tmr, tmrBg, tmrAuto;
         MouseCapture capture;
         readonly Dictionary<IntPtr, BgWindow> bgForms = new Dictionary<IntPtr, BgWindow>();
@@ -73,14 +77,14 @@ namespace WindowTool
 
         public MainForm()
         {
-            Text = "窗口置顶助手";
+            Text = "OI 工具箱";
             Font = Theme.FontUi;
             BackColor = Theme.Bg;
             DoubleBuffered = true;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = Theme.Sz(524, 514);
+            ClientSize = Theme.Sz(524, 652);
 
             lblSel = new Label();
             lblSel.Location = Theme.P(16, 14);
@@ -306,8 +310,35 @@ namespace WindowTool
             grpUU.Controls.Add(chkLag);
             grpUU.Controls.Add(lblUUStatus);
 
+            grpOI = new DarkGroupBox();
+            grpOI.Text = "OI 工具箱（一键下载部署环境）";
+            grpOI.Location = Theme.P(12, 474);
+            grpOI.Size = Theme.Sz(500, 132);
+            grpOI.ForeColor = Theme.Text;
+
+            btnSublime = GNewBtn(grpOI, "Sublime Text", Theme.P(14, 22), Theme.Sz(118, 27), OnDlSublime, false);
+            btnVscode = GNewBtn(grpOI, "VS Code", Theme.P(138, 22), Theme.Sz(96, 27), OnDlVscode, false);
+            btn302 = GNewBtn(grpOI, "SteamCommunity 302", Theme.P(240, 22), Theme.Sz(150, 27), OnOpen302, false);
+
+            btnCcChrome = GNewBtn(grpOI, "Competitive Companion (Chrome)", Theme.P(14, 52), Theme.Sz(232, 27), OnCcChrome, false);
+            btnCcEdge = GNewBtn(grpOI, "Competitive Companion (Edge)", Theme.P(252, 52), Theme.Sz(232, 27), OnCcEdge, false);
+
+            btnMsys2 = GNewBtn(grpOI, "MSYS2", Theme.P(14, 82), Theme.Sz(118, 27), OnMsys2, false);
+            btnToolchain = GNewBtn(grpOI, "安装 clang/clangd 工具链", Theme.P(138, 82), Theme.Sz(196, 27), OnToolchain, false);
+            pbOi = new ProgressBar();
+            pbOi.Location = Theme.P(340, 86);
+            pbOi.Size = Theme.Sz(146, 18);
+            lblOi = new Label();
+            lblOi.Location = Theme.P(14, 112);
+            lblOi.Size = Theme.Sz(472, 16);
+            Theme.StyleLabel(lblOi, Theme.TextDim);
+            lblOi.Text = "编辑器 / 刷题插件 / MSYS2(clang+clangd+g++，UCRT64，自动加入 PATH，供 Sublime LSP 使用)";
+
+            grpOI.Controls.Add(pbOi);
+            grpOI.Controls.Add(lblOi);
+
             lblKeys = new Label();
-            lblKeys.Location = Theme.P(12, 472);
+            lblKeys.Location = Theme.P(12, 612);
             lblKeys.Size = Theme.Sz(500, 34);
             Theme.StyleLabel(lblKeys, Theme.TextDim);
             lblKeys.Tag = "keys";
@@ -323,6 +354,7 @@ namespace WindowTool
             Controls.Add(grpOps);
             Controls.Add(grpBg);
             Controls.Add(grpUU);
+            Controls.Add(grpOI);
             Controls.Add(lblKeys);
 
             capture = new MouseCapture();
@@ -556,7 +588,7 @@ namespace WindowTool
             tray = new NotifyIcon();
             try { tray.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
             catch { tray.Icon = SystemIcons.Application; }
-            tray.Text = "窗口置顶助手";
+            tray.Text = "OI 工具箱";
             tray.ContextMenuStrip = menu;
             tray.Visible = true;
             // 只响应左键：右键交给托盘小菜单，不再弹主界面
@@ -580,7 +612,7 @@ namespace WindowTool
             if (tray == null) return;
             try
             {
-                tray.BalloonTipTitle = "窗口置顶助手";
+                tray.BalloonTipTitle = "OI 工具箱";
                 tray.BalloonTipText = text;
                 tray.ShowBalloonTip(1500);
             }
@@ -639,7 +671,7 @@ namespace WindowTool
                     balloonShown = true;
                     try
                     {
-                        tray.BalloonTipTitle = "窗口置顶助手";
+                        tray.BalloonTipTitle = "OI 工具箱";
                         tray.BalloonTipText = "程序已隐藏到托盘，所有功能继续生效。单击托盘图标可再次打开。";
                         tray.ShowBalloonTip(2000);
                     }
@@ -1244,6 +1276,175 @@ namespace WindowTool
         }
 
         void OnUuTest(object sender, EventArgs e) { UuMonitor.TestOnce(); }
+
+        // ---------------- OI 工具箱 ----------------
+
+        void OiStatus(string s)
+        {
+            try { lblOi.Text = s; } catch { }
+        }
+
+        void OiStatusSafe(string s)
+        {
+            try { BeginInvoke((Action)delegate { OiStatus(s); }); } catch { }
+        }
+
+        void StartDownload(string url, string name, Action<string> afterDone)
+        {
+            if (OiTools.Busy) { OiStatus("已有下载在进行中，请稍候…"); return; }
+            string dest;
+            try { dest = Path.Combine(OiTools.DownloadsDir(), Path.GetFileName(new Uri(url).LocalPath)); }
+            catch { dest = Path.Combine(OiTools.DownloadsDir(), name.Replace(" ", "") + ".exe"); }
+            try
+            {
+                pbOi.Value = 0;
+            }
+            catch { }
+            OiStatus("下载 " + name + " …");
+            OiTools.Download(url, dest,
+                (rec, tot) =>
+                {
+                    int pct = tot > 0 ? (int)(rec * 100 / tot) : 0;
+                    try { BeginInvoke((Action)delegate { try { pbOi.Value = pct; } catch { } OiStatus("下载 " + name + " … " + pct + "%"); }); } catch { }
+                },
+                () =>
+                {
+                    try { BeginInvoke((Action)delegate { try { pbOi.Value = 100; } catch { } }); } catch { }
+                    OiStatusSafe(name + " 下载完成：" + dest);
+                    if (afterDone != null) afterDone(dest);
+                },
+                msg => OiStatusSafe(name + " 下载失败：" + msg + "（可尝试关闭代理或手动打开官网）"));
+        }
+
+        void OnDlSublime(object sender, EventArgs e)
+        {
+            OiStatus("获取 Sublime Text 最新版本号…");
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                string ver = null;
+                try { ver = OiTools.FetchSublimeVersion(); }
+                catch (Exception ex) { Program.Log(ex); }
+                try
+                {
+                    BeginInvoke((Action)delegate
+                    {
+                        if (ver == null)
+                        {
+                            OiTools.OpenUrl("https://www.sublimetext.com/download");
+                            OiStatus("获取版本号失败，已打开官网下载页。");
+                            return;
+                        }
+                        StartDownload(
+                            "https://download.sublimetext.com/sublime_text_build_" + ver + "_x64_setup.exe",
+                            "Sublime Text " + ver,
+                            dest => OiTools.RunInstaller(dest, "/SILENT"));
+                    });
+                }
+                catch (Exception ex) { Program.Log(ex); }
+            });
+        }
+
+        void OnDlVscode(object sender, EventArgs e)
+        {
+            StartDownload("https://update.code.visualstudio.com/latest/win32-x64-user/stable", "VS Code",
+                dest => OiTools.RunInstaller(dest, "/VERYSILENT /NORESTART /MERGETASKS=!runcode"));
+        }
+
+        void OnOpen302(object sender, EventArgs e)
+        {
+            OiTools.OpenUrl("https://www.dogfight360.com/blog/1484/");
+            OiStatus("已打开 SteamCommunity 302 官方页面，在页面内下载最新版。");
+        }
+
+        void OnCcChrome(object sender, EventArgs e)
+        {
+            OiTools.OpenUrl("https://chromewebstore.google.com/detail/cjnmckjndlmiambhedcpomfbpkeodmdj");
+            OiStatus("已打开 Chrome 商店页面，点「添加至 Chrome」安装 Competitive Companion。");
+        }
+
+        void OnCcEdge(object sender, EventArgs e)
+        {
+            OiTools.OpenUrl("https://microsoftedge.microsoft.com/addons/search/competitive%20companion");
+            OiStatus("已打开 Edge 商店搜索页，选择 Competitive Companion 点「获取」安装。");
+        }
+
+        void OnMsys2(object sender, EventArgs e)
+        {
+            if (OiTools.Msys2Installed())
+            {
+                OiStatus("MSYS2 已安装在 " + OiTools.MsysRoot + "，可直接安装工具链。");
+                return;
+            }
+            StartDownload("https://repo.msys2.org/distrib/msys2-x86_64-latest.exe", "MSYS2", dest =>
+            {
+                OiStatusSafe("正在静默安装 MSYS2 到 " + OiTools.MsysRoot + "（约1-2分钟）…");
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                {
+                    try
+                    {
+                        int code = OiTools.InstallMsys2Silent(dest);
+                        OiStatusSafe(code == 0
+                            ? "MSYS2 安装完成！点「安装 clang/clangd 工具链」继续。"
+                            : "MSYS2 安装程序退出码 " + code + "，可手动运行：" + dest);
+                    }
+                    catch (Exception ex) { OiStatusSafe("MSYS2 安装失败：" + ex.Message); }
+                });
+            });
+        }
+
+        void OnToolchain(object sender, EventArgs e)
+        {
+            if (!OiTools.Msys2Installed()) { OiStatus("请先点「MSYS2」下载安装。"); return; }
+            if (oiToolchainRunning) { OiStatus("工具链正在安装中…"); return; }
+            oiToolchainRunning = true;
+            OiStatus("工具链安装中：同步 pacman 数据库（首次较慢）…");
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    var log = new StringBuilder();
+                    Action<string> on = line =>
+                    {
+                        if (string.IsNullOrEmpty(line)) return;
+                        lock (log) { log.AppendLine(line); }
+                        string shown = line.Length > 90 ? line.Substring(0, 90) + "…" : line;
+                        OiStatusSafe("工具链: " + shown);
+                    };
+                    // 首次运行可能要求更新核心包（退出码126），跑两次
+                    OiTools.RunBash("pacman -Syuu --noconfirm", on);
+                    OiTools.RunBash("pacman -Syuu --noconfirm", on);
+                    OiTools.RunBash("pacman -S --needed --noconfirm " +
+                        "mingw-w64-ucrt-x86_64-clang " +
+                        "mingw-w64-ucrt-x86_64-clang-tools-extra " +  // clangd
+                        "mingw-w64-ucrt-x86_64-gdb " +
+                        "mingw-w64-ucrt-x86_64-make " +
+                        "mingw-w64-ucrt-x86_64-gcc", on);
+                    bool pathOk = OiTools.AddMsysToPath();
+                    try
+                    {
+                        string logFile = Path.Combine(Path.GetTempPath(), "WindowTool_oi.log");
+                        lock (log) { File.WriteAllText(logFile, log.ToString()); }
+                    }
+                    catch { }
+                    BeginInvoke((Action)delegate
+                    {
+                        oiToolchainRunning = false;
+                        OiStatus(pathOk
+                            ? "工具链安装完成！clangd/g++ 已就位（UCRT64\\bin 已加入用户 PATH，重启 Sublime 后 LSP 可用）。"
+                            : "工具链安装完成，但加入 PATH 失败，请手动把 " + OiTools.MsysRoot + "\\ucrt64\\bin 加入 PATH。");
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Program.Log(ex);
+                    BeginInvoke((Action)delegate
+                    {
+                        oiToolchainRunning = false;
+                        OiStatus("工具链安装失败：" + ex.Message);
+                    });
+                }
+            });
+        }
 
         void OnBgTick(object sender, EventArgs e)
         {

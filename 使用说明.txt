@@ -1,4 +1,4 @@
-【窗口置顶助手】快速上手
+【OI 工具箱】快速上手
 
 一、启动
   双击 WindowTool.exe 默认直接显示主界面。
@@ -59,7 +59,19 @@
       2. 任意可见窗口标题包含"标题关键词"
       3. 可选勾选「卡顿也提醒」：系统持续卡顿时也弹提醒
 
-七、注意事项
+七、OI 工具箱（主界面底部）
+  · Sublime Text：自动取官方最新版 → 下载 → 静默安装
+  · VS Code：官方 latest 通道下载 → 静默安装
+  · SteamCommunity 302：打开作者官方页面下载(Steam社区访问修复)
+  · Competitive Companion：分 Chrome / Edge 两个按钮，打开商店页安装
+    (刷题插件，OJ 题目一键拉起本地编辑器)
+  · MSYS2：下载官方 latest 安装包 → 静默安装到 C:\msys64
+  · 安装 clang/clangd 工具链：pacman 装 UCRT64 的 clang、clang-tools-extra
+    (含 clangd)、gdb、make、gcc，并自动把 C:\msys64\ucrt64\bin 加入用户 PATH
+    → 装完重启 Sublime Text，LSP + LSP-clangd 插件即可正常工作
+  · 下载进度见右侧进度条；工具链安装日志在 %TEMP%\WindowTool_oi.log
+
+八、注意事项
   · 建议右键「以管理员身份运行」，否则部分高权限窗口无法操作
   · 未签名工具可能被杀软误报，加信任即可
   · 出错不会闪退，会弹提示；详细日志在 %TEMP%\WindowTool_crash.log
