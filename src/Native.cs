@@ -11,6 +11,7 @@ namespace WindowTool
         public const int WS_EX_TOPMOST = 0x00000008;
         public const int WS_EX_TRANSPARENT = 0x00000020;
         public const int WS_EX_TOOLWINDOW = 0x00000080;
+        public const int WS_EX_NOACTIVATE = 0x08000000;
         public const int WS_EX_LAYERED = 0x00080000;
         public const uint LWA_ALPHA = 0x2;
 
@@ -49,6 +50,8 @@ namespace WindowTool
         public static extern bool GetLayeredWindowAttributes(IntPtr hWnd, out uint crKey, out byte alpha, out uint dwFlags);
         [DllImport("user32.dll")]
         public static extern bool IsWindow(IntPtr hWnd);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
         [DllImport("user32.dll")]
         public static extern bool IsIconic(IntPtr hWnd);
         [DllImport("user32.dll")]
