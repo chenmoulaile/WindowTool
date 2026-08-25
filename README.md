@@ -39,8 +39,8 @@ OI 工具箱 是一款完全本机的桌面工具。一半是 **OI 环境一键�
 | **Sublime Text** | 自动获取官方最新版本号 → 下载 x64 安装包 → 静默安装 |
 | **VS Code** | 官方 latest 通道下载 x64 User 安装包 → 静默安装 |
 | **SteamCommunity 302** | 打开作者 Dogfight360 的官方页面下载（Steam 社区访问修复） |
-| **Competitive Companion (Chrome)** | 打开 Chrome 商店安装页，点「添加至 Chrome」 |
-| **Competitive Companion (Edge)** | 打开 Edge 商店搜索页安装 |
+| **Competitive Companion (Chrome)** | 从 GitHub Releases 下载最新官方扩展包并自动解压（**国内直连免 VPN**）；Chrome 打开 `chrome://extensions` → 开「开发者模式」→「加载已解压的扩展程序」→ 选解压出的文件夹 |
+| **Competitive Companion (Edge)** | 同一扩展包通用；Edge 打开 `edge://extensions` → 开「开发人员模式」→「加载解压缩的扩展」→ 选解压出的文件夹 |
 | **MSYS2** | 从 repo.msys2.org 下载 latest 安装包 → 静默安装到 `C:\msys64` |
 | **安装 clang/clangd 工具链** | pacman 安装 UCRT64 工具链：`clang`、`clang-tools-extra`(clangd)、`gdb`、`make`、`gcc`，并自动把 `C:\msys64\ucrt64\bin` 加入用户 PATH |
 
@@ -51,8 +51,8 @@ OI 工具箱 是一款完全本机的桌面工具。一半是 **OI 环境一键�
 
 ```
 1  置顶切换        5  取消该窗口②      R  随机切换轮播视频
-2  置顶+穿透       6  取消所有②        ←  透明度 -15
-3  上移一层        7  图片背景          →  透明度 +15
+2  置顶+穿透       6  取消所有②        -  透明度 -15
+3  上移一层        7  图片背景          =  透明度 +15
 4  下移一层        8  视频背景
                    0  取消背景
 ```

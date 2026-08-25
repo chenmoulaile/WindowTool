@@ -343,7 +343,7 @@ namespace WindowTool
             Theme.StyleLabel(lblKeys, Theme.TextDim);
             lblKeys.Tag = "keys";
             lblKeys.Font = new Font("微软雅黑", 8.25f);
-            lblKeys.Text = "全局热键(Ctrl+Alt+): 1置顶切换 2穿透置顶 3上移层 4下移层 5取消本窗② 6取消全部② 7图片背景 8视频背景 0取消背景 R随机切视频 ←→调透明度";
+            lblKeys.Text = "全局热键(Ctrl+Alt+): 1置顶切换 2穿透置顶 3上移层 4下移层 5取消本窗② 6取消全部② 7图片背景 8视频背景 0取消背景 R随机切视频 -/+调透明度";
 
             Controls.Add(lblSel);
             Controls.Add(chkSilent);
@@ -696,8 +696,8 @@ namespace WindowTool
             if (!Native.RegisterHotKey(Handle, HK_VID, m, (uint)'8')) fails.Add("8");
             if (!Native.RegisterHotKey(Handle, HK_BGOFF, m, (uint)'0')) fails.Add("0");
             if (!Native.RegisterHotKey(Handle, HK_VRAND, m, (uint)'R')) fails.Add("R");
-            if (!Native.RegisterHotKey(Handle, HK_ALPHA_DEC, m, Native.VK_LEFT)) fails.Add("←");
-            if (!Native.RegisterHotKey(Handle, HK_ALPHA_INC, m, Native.VK_RIGHT)) fails.Add("→");
+            if (!Native.RegisterHotKey(Handle, HK_ALPHA_DEC, m, Native.VK_OEM_MINUS)) fails.Add("-");
+            if (!Native.RegisterHotKey(Handle, HK_ALPHA_INC, m, Native.VK_OEM_PLUS)) fails.Add("=");
             if (fails.Count > 0)
                 lblKeys.Text += "　[注册失败: " + string.Join(" ", fails.ToArray()) + "]";
         }
@@ -1356,16 +1356,70 @@ namespace WindowTool
             OiStatus("已打开 SteamCommunity 302 官方页面，在页面内下载最新版。");
         }
 
-        void OnCcChrome(object sender, EventArgs e)
+        void OnCcChrome(object sender, EventArgs e) { InstallCompetitiveCompanion("chrome"); }
+
+        void OnCcEdge(object sender, EventArgs e) { InstallCompetitiveCompanion("edge"); }
+
+        // Chrome 商店需科学上网；改从 GitHub Releases 下载官方扩展包（国内可直连），
+        // Chrome/Edge 通用：开发者模式 → 加载已解压的扩展程序
+        void InstallCompetitiveCompanion(string browser)
         {
-            OiTools.OpenUrl("https://chromewebstore.google.com/detail/cjnmckjndlmiambhedcpomfbpkeodmdj");
-            OiStatus("已打开 Chrome 商店页面，点「添加至 Chrome」安装 Competitive Companion。");
+            OiStatus("获取 Competitive Companion 最新版本…");
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                string tag = null;
+                try
+                {
+                    using (var wc = new System.Net.WebClient())
+                    {
+                        wc.Headers.Add("User-Agent", "Mozilla/5.0");
+                        string json = wc.DownloadString("https://api.github.com/repos/jmerle/competitive-companion/releases/latest");
+                        var m = System.Text.RegularExpressions.Regex.Match(json, "\"tag_name\"\\s*:\\s*\"([^\"]+)\"");
+                        if (m.Success) tag = m.Groups[1].Value;
+                    }
+                }
+                catch (Exception ex) { Program.Log(ex); }
+                try
+                {
+                    BeginInvoke((Action)delegate
+                    {
+                        if (tag == null)
+                        {
+                            OiTools.OpenUrl("https://github.com/jmerle/competitive-companion/releases");
+                            OiStatus("获取版本失败，已打开 GitHub Releases 页面，请手动下载 chrome.zip。");
+                            return;
+                        }
+                        string url = "https://github.com/jmerle/competitive-companion/releases/download/" +
+                            tag + "/competitive_companion-" + tag + "-chrome.zip";
+                        StartDownload(url, "Competitive Companion " + tag, dest => ExtractCompanion(dest, browser));
+                    });
+                }
+                catch (Exception ex) { Program.Log(ex); }
+            });
         }
 
-        void OnCcEdge(object sender, EventArgs e)
+        void ExtractCompanion(string zipPath, string browser)
         {
-            OiTools.OpenUrl("https://microsoftedge.microsoft.com/addons/search/competitive%20companion");
-            OiStatus("已打开 Edge 商店搜索页，选择 Competitive Companion 点「获取」安装。");
+            OiStatusSafe("解压扩展…");
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    string dir = Path.Combine(OiTools.DownloadsDir(), "CompetitiveCompanion");
+                    if (Directory.Exists(dir)) { try { Directory.Delete(dir, true); } catch { } }
+                    System.IO.Compression.ZipFile.ExtractToDirectory(zipPath, dir);
+                    BeginInvoke((Action)delegate
+                    {
+                        OiStatus(browser == "chrome"
+                            ? "已解压到 " + dir + " 。Chrome：地址栏 chrome://extensions → 开右上「开发者模式」→「加载已解压的扩展程序」→ 选该文件夹"
+                            : "已解压到 " + dir + " 。Edge：地址栏 edge://extensions → 开左下「开发人员模式」→「加载解压缩的扩展」→ 选该文件夹");
+                    });
+                }
+                catch (Exception ex)
+                {
+                    BeginInvoke((Action)delegate { OiStatus("解压失败：" + ex.Message); });
+                }
+            });
         }
 
         void OnMsys2(object sender, EventArgs e)

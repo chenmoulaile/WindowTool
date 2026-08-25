@@ -34,6 +34,8 @@ namespace WindowTool
         public const uint MOD_WIN = 0x8;
         public const int VK_LEFT = 0x25;
         public const int VK_RIGHT = 0x27;
+        public const int VK_OEM_PLUS = 0xBB;   // = 键
+        public const int VK_OEM_MINUS = 0xBD;  // - 键
 
         [DllImport("user32.dll")]
         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
