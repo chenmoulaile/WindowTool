@@ -14,7 +14,6 @@ namespace WindowTool
         public string Source = "本地";   // 本地 / 网易
         public string LocalPath = "";
         public string NetId = "";
-        public int RefIndex = -1;        // 在 MusicPlayer.Songs 中的下标
 
         public override string ToString()
         {
@@ -234,14 +233,12 @@ namespace WindowTool
         }
 
         public void BeginWaitUrl() { waitUrl = true; openedAt = DateTime.Now.Ticks; }
-        public bool WaitingUrl { get { return waitUrl; } }
         public bool WaitTimedOut { get { return waitUrl && (DateTime.Now.Ticks - openedAt) > TimeSpan.FromSeconds(8).Ticks; } }
 
         public void Play() { mp.Play(); }
         public void Pause() { mp.Pause(); }
         public void Stop() { try { mp.Stop(); } catch { } }
         public void Close() { try { mp.Close(); } catch { } }
-        public bool IsPaused { get { try { return mp.Position == TimeSpan.Zero && !CanPlay(); } catch { return false; } } }
 
         public bool CanPlay()
         {

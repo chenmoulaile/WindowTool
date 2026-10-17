@@ -97,7 +97,7 @@ namespace WindowTool
         public static void TestOnce()
         {
             EnsureCreated();
-            alert.SetText("你已被控制");
+            alert.SetLine("你已被控制");
             alert.ShowOnce(3000);
         }
 
@@ -147,7 +147,7 @@ namespace WindowTool
                     reason = "你已被控制";
                     // 循环提醒：显示约2秒、隐藏约4秒，直到状态解除
                     bool vis = (phase % 6) < 2;
-                    alert.SetText(reason);
+                    alert.SetLine(reason);
                     alert.SetVisible(vis);
                     RaiseStatus("检测到被控！(" + why + ") 鼠标旁持续提醒。");
                 }
@@ -211,7 +211,7 @@ namespace WindowTool
 
         static void OnReleased()
         {
-            alert.SetText("已解除控制");
+            alert.SetLine("已解除控制");
             alert.ShowOnce(3000);
             releaseShownUntil = DateTime.Now.AddSeconds(3.5);
             RaiseStatus("已解除控制。");

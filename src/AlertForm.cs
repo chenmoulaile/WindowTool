@@ -51,7 +51,7 @@ namespace WindowTool
             if (old != null) old.Dispose();
         }
 
-        public void SetText(string text)
+        public void SetLine(string text)
         {
             if (lbl.Text == text) return;
             lbl.Text = text;

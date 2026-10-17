@@ -18,8 +18,8 @@ namespace WindowTool
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
-            BackColor = Color.FromArgb(28, 30, 34);
-            Opacity = 0.88;
+            BackColor = Color.FromArgb(22, 24, 28);
+            Opacity = 0.9;
             Size = Theme.Sz(420, 52);
             DoubleBuffered = true;
             TopMost = true;
@@ -42,21 +42,25 @@ namespace WindowTool
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            using (var path = Theme.RoundRect(new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(12)))
+            var r = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (var path = Theme.RoundRect(r, Height))
             {
-                using (var b = new SolidBrush(BackColor)) g.FillPath(b, path);
-                using (var pen = new Pen(Theme.Accent)) g.DrawPath(pen, path);
+                using (var br = new SolidBrush(BackColor)) g.FillPath(br, path);
+                using (var pen = new Pen(Theme.Alpha(Theme.Accent, 150), Math.Max(1f, Theme.S(1.4f))))
+                    g.DrawPath(pen, path);
             }
-            TextRenderer.DrawText(g, text.Length == 0 ? "…" : text, font, ClientRectangle, Color.White,
+            TextRenderer.DrawText(g, text.Length == 0 ? "…" : text, font,
+                new Rectangle(Theme.S(22), 0, Width - Theme.S(44), Height), Color.White,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+                TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
         }
 
-        public void SetText(string s)
+        public void SetLine(string s)
         {
             if (s == text) return;
             text = s ?? "";
-            int w = TextRenderer.MeasureText(text, font).Width + Theme.S(56);
+            int w = TextRenderer.MeasureText(text, font, Size.Empty,
+                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width + Theme.S(56);
             w = Math.Max(Theme.S(280), Math.Min(Theme.S(900), w));
             int h = Theme.S(52);
             Location = new Point(Location.X + (Width - w) / 2, Location.Y + (Height - h));
@@ -94,8 +98,8 @@ namespace WindowTool
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
-            BackColor = Color.FromArgb(28, 30, 34);
-            Opacity = 0.9;
+            BackColor = Color.FromArgb(22, 24, 28);
+            Opacity = 0.92;
             Size = Theme.Sz(600, 34);
             DoubleBuffered = true;
             TopMost = true;
@@ -118,21 +122,25 @@ namespace WindowTool
         {
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            using (var path = Theme.RoundRect(new Rectangle(0, 0, Width - 1, Height - 1), Theme.S(8)))
+            var r = new Rectangle(0, 0, Width - 1, Height - 1);
+            using (var path = Theme.RoundRect(r, Height))
             {
-                using (var b = new SolidBrush(BackColor)) g.FillPath(b, path);
-                using (var pen = new Pen(Theme.Accent)) g.DrawPath(pen, path);
+                using (var br = new SolidBrush(BackColor)) g.FillPath(br, path);
+                using (var pen = new Pen(Theme.Alpha(Theme.Accent, 130), Math.Max(1f, Theme.S(1))))
+                    g.DrawPath(pen, path);
             }
-            TextRenderer.DrawText(g, text.Length == 0 ? "…" : text, font, ClientRectangle, Color.White,
+            TextRenderer.DrawText(g, text.Length == 0 ? "…" : text, font,
+                new Rectangle(Theme.S(16), 0, Width - Theme.S(32), Height), Color.White,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine);
+                TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
         }
 
-        public void SetText(string s)
+        public void SetLine(string s)
         {
             if (s == text) return;
             text = s ?? "";
-            int w = TextRenderer.MeasureText(text, font).Width + Theme.S(40);
+            int w = TextRenderer.MeasureText(text, font, Size.Empty,
+                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width + Theme.S(40);
             w = Math.Max(Theme.S(260), Math.Min(Theme.S(900), w));
             int h = Theme.S(34);
             Location = new Point(Location.X + (Width - w) / 2, Location.Y + (Height - h));
