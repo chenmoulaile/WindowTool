@@ -202,69 +202,88 @@ namespace WindowTool
         }
     }
 
-    /// 播放器：WPF MediaPlayer 封装；播完检测由外部定时器轮询驱动
+    /// 播放器：WPF MediaPlayer 封装；播完检测由外部定时器轮询驱动。
+    /// MediaPlayer 用 object 持有并延迟创建 —— WPF 类型的**字段**就足以让 CLR 在
+    /// 加载本类时解析并载入 PresentationCore，所以必须连字段类型一起避开。
     sealed class MusicPlayer
     {
-        readonly System.Windows.Media.MediaPlayer mp;
+        object mpObj;
         long openedAt;
         bool waitUrl;
+        double vol = 80;
 
-        public MusicPlayer()
+        System.Windows.Media.MediaPlayer Mp { get { return (System.Windows.Media.MediaPlayer)mpObj; } }
+
+        void Ensure()
         {
-            mp = new System.Windows.Media.MediaPlayer();
-            mp.Volume = 0.8;
-            openedAt = DateTime.Now.Ticks;
+            if (mpObj != null) return;
+            var created = new System.Windows.Media.MediaPlayer();
+            created.Volume = vol / 100.0;
+            mpObj = created;
         }
 
         public void OpenFile(string path)
         {
             waitUrl = false;
             openedAt = DateTime.Now.Ticks;
-            mp.Open(new Uri(path, UriKind.Absolute));
-            mp.Play();
+            Ensure();
+            Mp.Open(new Uri(path, UriKind.Absolute));
+            Mp.Play();
         }
 
         public void OpenUrl(string url)
         {
             waitUrl = false;
             openedAt = DateTime.Now.Ticks;
-            mp.Open(new Uri(url, UriKind.Absolute));
-            mp.Play();
+            Ensure();
+            Mp.Open(new Uri(url, UriKind.Absolute));
+            Mp.Play();
         }
 
         public void BeginWaitUrl() { waitUrl = true; openedAt = DateTime.Now.Ticks; }
         public bool WaitTimedOut { get { return waitUrl && (DateTime.Now.Ticks - openedAt) > TimeSpan.FromSeconds(8).Ticks; } }
 
-        public void Play() { mp.Play(); }
-        public void Pause() { mp.Pause(); }
-        public void Stop() { try { mp.Stop(); } catch { } }
-        public void Close() { try { mp.Close(); } catch { } }
+        public void Play() { if (mpObj != null) Mp.Play(); }
+        public void Pause() { if (mpObj != null) Mp.Pause(); }
+        public void Stop() { try { if (mpObj != null) Mp.Stop(); } catch { } }
+        public void Close() { try { if (mpObj != null) Mp.Close(); } catch { } }
 
         public bool CanPlay()
         {
-            try { return mp.NaturalDuration.HasTimeSpan && mp.NaturalDuration.TimeSpan > TimeSpan.Zero; }
+            if (mpObj == null) return false;
+            try { return Mp.NaturalDuration.HasTimeSpan && Mp.NaturalDuration.TimeSpan > TimeSpan.Zero; }
             catch { return false; }
         }
 
         public TimeSpan Position
         {
-            get { try { return mp.Position; } catch { return TimeSpan.Zero; } }
-            set { try { mp.Position = value; } catch { } }
+            get { try { return mpObj == null ? TimeSpan.Zero : Mp.Position; } catch { return TimeSpan.Zero; } }
+            set { try { if (mpObj != null) Mp.Position = value; } catch { } }
         }
 
         public TimeSpan Duration
         {
             get
             {
-                try { return mp.NaturalDuration.HasTimeSpan ? mp.NaturalDuration.TimeSpan : TimeSpan.Zero; }
+                if (mpObj == null) return TimeSpan.Zero;
+                try { return Mp.NaturalDuration.HasTimeSpan ? Mp.NaturalDuration.TimeSpan : TimeSpan.Zero; }
                 catch { return TimeSpan.Zero; }
             }
         }
 
+        /// 引擎是否已被拉起（即是否真的播放过）
+        public bool Active { get { return mpObj != null; } }
+
+        public void SetVolumeOnly(double v) { vol = Math.Max(0, Math.Min(100, v)); }
+
+        // 方法体内绝不能出现 WPF 类型：JIT 按整个方法体解析，
+        // 哪怕分支永远不进，引用 Mp 也会立刻加载 PresentationCore。
         public double Volume   // 0..100
         {
-            get { try { return mp.Volume * 100; } catch { return 80; } }
-            set { try { mp.Volume = Math.Max(0, Math.Min(100, value)) / 100.0; } catch { } }
+            get { return vol; }
+            set { SetVolumeOnly(value); if (mpObj != null) ApplyVolume(); }
         }
+
+        void ApplyVolume() { try { Mp.Volume = vol / 100.0; } catch { } }
     }
 }

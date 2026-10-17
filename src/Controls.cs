@@ -951,4 +951,103 @@ namespace WindowTool
             }
         }
     }
+
+    /// 3x3 分屏吸附面板：每格画出它代表的目标区域，点击即吸附。
+    sealed class SnapPad : Control, IThemed
+    {
+        static readonly SnapKind[] Order =
+        {
+            SnapKind.TopLeft, SnapKind.Top, SnapKind.TopRight,
+            SnapKind.Left, SnapKind.Center, SnapKind.Right,
+            SnapKind.BottomLeft, SnapKind.Bottom, SnapKind.BottomRight
+        };
+        int hover = -1;
+        public event Action<SnapKind> Picked;
+
+        public SnapPad()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw |
+                     ControlStyles.SupportsTransparentBackColor, true);
+            BackColor = Color.Transparent;
+            Cursor = Cursors.Hand;
+            Height = Theme.S(104);
+        }
+
+        public void ApplyTheme() { Height = Theme.S(104); Invalidate(); }
+
+        int Gap { get { return Theme.S(6); } }
+
+        Rectangle Cell(int i)
+        {
+            int g = Gap;
+            int cols = 3, rows = 3;
+            int cw = (Width - g * (cols - 1)) / cols;
+            int ch = (Height - g * (rows - 1)) / rows;
+            return new Rectangle(i % cols * (cw + g), i / cols * (ch + g), cw, ch);
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            int h = -1;
+            for (int i = 0; i < 9; i++) if (Cell(i).Contains(e.Location)) h = i;
+            if (h != hover) { hover = h; Invalidate(); }
+            base.OnMouseMove(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e) { hover = -1; Invalidate(); base.OnMouseLeave(e); }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            for (int i = 0; i < 9; i++)
+                if (Cell(i).Contains(e.Location))
+                {
+                    var h = Picked;
+                    if (h != null) h(Order[i]);
+                    return;
+                }
+            base.OnMouseDown(e);
+        }
+
+        /// 该格里要涂亮的区域：表示点下去后窗口会占满工作区的哪一块
+        static RectangleF Zone(Rectangle c, SnapKind k)
+        {
+            float pad = Math.Min(c.Width, c.Height) * 0.16f;
+            var full = new RectangleF(c.X + pad, c.Y + pad, c.Width - pad * 2, c.Height - pad * 2);
+            float halfW = full.Width / 2f, halfH = full.Height / 2f;
+            switch (k)
+            {
+                case SnapKind.Left: return new RectangleF(full.X, full.Y, halfW, full.Height);
+                case SnapKind.Right: return new RectangleF(full.X + halfW, full.Y, halfW, full.Height);
+                case SnapKind.Top: return new RectangleF(full.X, full.Y, full.Width, halfH);
+                case SnapKind.Bottom: return new RectangleF(full.X, full.Y + halfH, full.Width, halfH);
+                case SnapKind.TopLeft: return new RectangleF(full.X, full.Y, halfW, halfH);
+                case SnapKind.TopRight: return new RectangleF(full.X + halfW, full.Y, halfW, halfH);
+                case SnapKind.BottomLeft: return new RectangleF(full.X, full.Y + halfH, halfW, halfH);
+                case SnapKind.BottomRight: return new RectangleF(full.X + halfW, full.Y + halfH, halfW, halfH);
+                case SnapKind.Center:
+                    return new RectangleF(full.X + halfW * 0.35f, full.Y + halfH * 0.35f, halfW * 1.3f, halfH * 1.3f);
+            }
+            return full;
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            Theme.Hint(g);
+            g.Clear(Theme.SolidBack(this));
+            for (int i = 0; i < 9; i++)
+            {
+                var c = Cell(i);
+                using (var p = Theme.RoundRect(c, Theme.S(7)))
+                {
+                    Theme.FillPath(g, p, i == hover ? Theme.Hover : Theme.CardSunken);
+                    Theme.StrokePath(g, p, Theme.Border, Math.Max(1f, Theme.S(1)));
+                }
+                var z = Rectangle.Round(Zone(c, Order[i]));
+                using (var p = Theme.RoundRect(z, Theme.S(4)))
+                    Theme.FillPath(g, p, i == hover ? Theme.Accent : Theme.Alpha(Theme.Accent, 120));
+            }
+        }
+    }
 }

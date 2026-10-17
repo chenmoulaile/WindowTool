@@ -15,7 +15,12 @@ namespace WindowTool
         public byte BgAlpha;
         public byte LastAlpha = 255;
         public bool TopByUs;   // 置顶是否由本工具设置（退出时用于还原）
+        public bool BlurOn;
+        public System.Drawing.Rectangle PrevRect;
+        public bool HasPrev;   // 吸附前的大小位置，用于「还原」
     }
+
+    public enum SnapKind { Left, Right, Top, Bottom, TopLeft, TopRight, BottomLeft, BottomRight, Max, Center }
 
     static class Manager
     {
@@ -282,6 +287,146 @@ namespace WindowTool
         {
             Native.SetWindowPos(h, Native.HWND_BOTTOM, 0, 0, 0, 0,
                 Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+        }
+
+        // ---------------- 亚克力 / 模糊 ----------------
+
+        public static bool IsBlurred(IntPtr h)
+        {
+            var s = Find(h);
+            return s != null && s.BlurOn;
+        }
+
+        /// 先试 Win10 的亚克力，失败再退回旧的 BLURBEHIND；都不支持时返回 false。
+        public static bool ApplyBlur(IntPtr h, bool on)
+        {
+            if (!Native.IsWindow(h)) return false;
+            try
+            {
+                var pol = new Native.ACCENT_POLICY
+                {
+                    AccentState = on ? Native.ACCENT_ACRYLIC : Native.ACCENT_DISABLED,
+                    AccentFlags = on ? 2 : 0,
+                    GradientColor = on ? 0x99FFFFFFu : 0u,
+                    AnimationId = 0
+                };
+                int size = Marshal.SizeOf(pol);
+                IntPtr ptr = Marshal.AllocHGlobal(size);
+                try
+                {
+                    Marshal.StructureToPtr(pol, ptr, false);
+                    var data = new Native.WCAATTRIB { Attribute = Native.WCA_ACCENT_POLICY, Data = ptr, SizeOfData = size };
+                    int hr = Native.SetWindowCompositionAttribute(h, ref data);
+                    if (on && hr == 0)
+                    {
+                        pol.AccentState = Native.ACCENT_BLURBEHIND;
+                        Marshal.StructureToPtr(pol, ptr, false);
+                        data = new Native.WCAATTRIB { Attribute = Native.WCA_ACCENT_POLICY, Data = ptr, SizeOfData = size };
+                        Native.SetWindowCompositionAttribute(h, ref data);
+                    }
+                }
+                finally { Marshal.FreeHGlobal(ptr); }
+
+                var m = new Native.MARGINS();
+                if (on) { m.Left = -1; m.Right = -1; m.Top = -1; m.Bottom = -1; }
+                Native.DwmExtendFrameIntoClientArea(h, ref m);
+
+                GetInfo(h).BlurOn = on;
+                return true;
+            }
+            catch (Exception ex) { Program.Log(ex); return false; }
+        }
+
+        public static void DisableAllBlurs()
+        {
+            List<IntPtr> snap = null;
+            foreach (var kv in states)
+                if (kv.Value.BlurOn) { if (snap == null) snap = new List<IntPtr>(); snap.Add(kv.Key); }
+            if (snap != null)
+                foreach (var h in snap) ApplyBlur(h, false);
+        }
+
+        // ---------------- 分屏吸附 ----------------
+
+        static bool WorkArea(IntPtr h, out System.Drawing.Rectangle wa)
+        {
+            wa = System.Drawing.Rectangle.Empty;
+            try
+            {
+                IntPtr mon = Native.MonitorFromWindow(h, Native.MONITOR_DEFAULTTONEAREST);
+                if (mon == IntPtr.Zero) return false;
+                var mi = new Native.MONITORINFO();
+                mi.cbSize = Marshal.SizeOf(typeof(Native.MONITORINFO));
+                if (!Native.GetMonitorInfo(mon, ref mi)) return false;
+                wa = System.Drawing.Rectangle.FromLTRB(mi.rcWork.Left, mi.rcWork.Top, mi.rcWork.Right, mi.rcWork.Bottom);
+                return wa.Width > 0 && wa.Height > 0;
+            }
+            catch (Exception ex) { Program.Log(ex); return false; }
+        }
+
+        /// 把窗口吸附到工作区的某个区域；第一次吸附时记下原矩形，便于还原。
+        public static bool Snap(IntPtr h, SnapKind kind)
+        {
+            if (!Native.IsWindow(h)) return false;
+            System.Drawing.Rectangle wa;
+            if (!WorkArea(h, out wa)) return false;
+
+            var s = GetInfo(h);
+            if (!s.HasPrev)
+            {
+                Native.RECT cur;
+                if (Native.GetWindowRect(h, out cur))
+                {
+                    s.PrevRect = System.Drawing.Rectangle.FromLTRB(cur.Left, cur.Top, cur.Right, cur.Bottom);
+                    s.HasPrev = true;
+                }
+            }
+            if (Native.IsIconic(h)) Native.ShowWindow(h, Native.SW_RESTORE);
+
+            int halfW = wa.Width / 2, halfH = wa.Height / 2;
+            int x = wa.X, y = wa.Y, w = wa.Width, hh = wa.Height;
+            switch (kind)
+            {
+                case SnapKind.Left: w = halfW; break;
+                case SnapKind.Right: x = wa.X + halfW; w = wa.Width - halfW; break;
+                case SnapKind.Top: hh = halfH; break;
+                case SnapKind.Bottom: y = wa.Y + halfH; hh = wa.Height - halfH; break;
+                case SnapKind.TopLeft: w = halfW; hh = halfH; break;
+                case SnapKind.TopRight: x = wa.X + halfW; w = wa.Width - halfW; hh = halfH; break;
+                case SnapKind.BottomLeft: y = wa.Y + halfH; w = halfW; hh = wa.Height - halfH; break;
+                case SnapKind.BottomRight:
+                    x = wa.X + halfW; y = wa.Y + halfH;
+                    w = wa.Width - halfW; hh = wa.Height - halfH; break;
+                case SnapKind.Max: break;
+                case SnapKind.Center:
+                    {
+                        int cw = Math.Min(s.HasPrev ? s.PrevRect.Width : wa.Width / 2, wa.Width);
+                        int ch = Math.Min(s.HasPrev ? s.PrevRect.Height : wa.Height / 2, wa.Height);
+                        x = wa.X + (wa.Width - cw) / 2;
+                        y = wa.Y + (wa.Height - ch) / 2;
+                        w = cw; hh = ch;
+                        break;
+                    }
+            }
+            return Native.SetWindowPos(h, IntPtr.Zero, x, y, w, hh,
+                Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+        }
+
+        /// 回到第一次吸附前的矩形。没有记录时返回 false。
+        public static bool Unsnap(IntPtr h)
+        {
+            var s = Find(h);
+            if (s == null || !s.HasPrev || !Native.IsWindow(h)) return false;
+            var r = s.PrevRect;
+            s.HasPrev = false;
+            return Native.SetWindowPos(h, IntPtr.Zero, r.X, r.Y, r.Width, r.Height,
+                Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+        }
+
+        public static bool HasSnapBackup(IntPtr h)
+        {
+            var s = Find(h);
+            return s != null && s.HasPrev;
         }
 
         public static void Cleanup()

@@ -10,6 +10,7 @@ namespace WindowTool
     {
         readonly Font font = new Font("微软雅黑", 15f, FontStyle.Bold);
         string text = "";
+        double progress;      // 当前歌词行 0..1，用填色表现进度（公开接口没有逐字时间轴）
         bool dragging;
         Point dragPt;
 
@@ -49,10 +50,28 @@ namespace WindowTool
                 using (var pen = new Pen(Theme.Alpha(Theme.Accent, 150), Math.Max(1f, Theme.S(1.4f))))
                     g.DrawPath(pen, path);
             }
-            TextRenderer.DrawText(g, text.Length == 0 ? "…" : text, font,
-                new Rectangle(Theme.S(22), 0, Width - Theme.S(44), Height), Color.White,
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
-                TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+            var box = new RectangleF(Theme.S(22), 0, Width - Theme.S(44), Height);
+            string shown = text.Length == 0 ? "…" : text;
+            var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding;
+            TextRenderer.DrawText(g, shown, font, Rectangle.Round(box), Color.FromArgb(215, 255, 255, 255), flags);
+
+            double pr = progress;
+            if (pr > 0.001 && pr < 0.999)
+            {
+                var old = g.Clip;
+                g.SetClip(new RectangleF(box.X, box.Y, box.Width * (float)pr, box.Height));
+                TextRenderer.DrawText(g, shown, font, Rectangle.Round(box), Theme.Accent, flags);
+                g.Clip = old;
+            }
+        }
+
+        public void SetProgress(double p01)
+        {
+            double v = p01 < 0 ? 0 : (p01 > 1 ? 1 : p01);
+            if (Math.Abs(v - progress) < 0.004) return;
+            progress = v;
+            Invalidate();
         }
 
         public void SetLine(string s)

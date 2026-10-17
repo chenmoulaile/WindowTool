@@ -5,5 +5,5 @@ using System.Reflection;
 [assembly: AssemblyDescription("窗口管理 + OI 竞赛环境一键部署")]
 [assembly: AssemblyCompany("chenmoulaile")]
 [assembly: AssemblyCopyright("© 2026 chenmoulaile · MIT License")]
-[assembly: AssemblyVersion("1.12.0.0")]
-[assembly: AssemblyFileVersion("1.12.0.0")]
+[assembly: AssemblyVersion("1.13.0.0")]
+[assembly: AssemblyFileVersion("1.13.0.0")]

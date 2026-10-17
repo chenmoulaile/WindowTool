@@ -13,6 +13,7 @@ namespace WindowTool
     {
         readonly MusicPlayer engine = new MusicPlayer();
         public readonly List<Track> Songs = new List<Track>();
+        double seekWhenReady = -1;      // 恢复进度时引擎还没就绪，等它报出时长再跳
         public int Index = -1;
         public bool Playing;
         public LoopMode Loop = LoopMode.All;
@@ -24,7 +25,7 @@ namespace WindowTool
         readonly MainForm host;
         public event EventHandler Changed;
 
-        public Player(MainForm host) { this.host = host; engine.Volume = 80; }
+        public Player(MainForm host) { this.host = host; engine.SetVolumeOnly(80); }
 
         public double Volume
         {
@@ -32,11 +33,17 @@ namespace WindowTool
             set { engine.Volume = Math.Max(0, Math.Min(100, value)); }
         }
 
+        /// 只记音量，不拉起 WPF 引擎
+        public void SetVolumeOnly(double v) { engine.SetVolumeOnly(Math.Max(0, Math.Min(100, v))); }
+
         public bool HasSong { get { return Index >= 0 && Index < Songs.Count; } }
+
+        /// 引擎是否已被拉起；未播放过时调用方要绕开一切会 JIT 到 WPF 成员的方法
+        public bool Started { get { return engine.Active; } }
         public Track Current { get { return HasSong ? Songs[Index] : null; } }
-        public TimeSpan Pos { get { return engine.Position; } }
-        public TimeSpan Dur { get { return engine.Duration; } }
-        public bool CanSeek { get { return engine.CanPlay(); } }
+        public TimeSpan Pos { get { return engine.Active ? engine.Position : TimeSpan.Zero; } }
+        public TimeSpan Dur { get { return engine.Active ? engine.Duration : TimeSpan.Zero; } }
+        public bool CanSeek { get { return engine.Active && engine.CanPlay(); } }
 
         void Raise() { var h = Changed; if (h != null) h(this, EventArgs.Empty); }
 
@@ -58,6 +65,7 @@ namespace WindowTool
         public void OpenAt(int i)
         {
             if (i < 0 || i >= Songs.Count) return;
+            if (i == Index && engine.Active) { Toggle(); return; }
             Index = i;
             Lyric = new List<KeyValuePair<TimeSpan, string>>();
             Playing = true;
@@ -121,6 +129,8 @@ namespace WindowTool
         public void Toggle()
         {
             if (!HasSong) { OpenAt(0); return; }
+            // 上次退出前只恢复了列表与选中项，引擎还没开过任何文件
+            if (!engine.Active) { OpenAt(Index); return; }
             if (Playing) { engine.Pause(); Playing = false; }
             else { engine.Play(); Playing = true; }
             Raise();
@@ -185,6 +195,13 @@ namespace WindowTool
         // 由外部 250ms 定时器驱动：检测播完、推进进度
         public void Poll()
         {
+            if (!engine.Active) return;
+            if (seekWhenReady >= 0 && CanSeek)
+            {
+                double s = seekWhenReady;
+                seekWhenReady = -1;
+                try { engine.Position = TimeSpan.FromSeconds(s); } catch { }
+            }
             if (engine.WaitTimedOut)
             {
                 Status = "获取播放地址超时";
@@ -209,10 +226,76 @@ namespace WindowTool
             }
         }
 
+        /// 当前歌词行内的进度 0..1（按本行到下一行的时间差推算）
+        public double LineProgress
+        {
+            get
+            {
+                int i = LyricIndex;
+                if (i < 0 || Lyric == null || i >= Lyric.Count) return 0;
+                var start = Lyric[i].Key;
+                var end = i + 1 < Lyric.Count ? Lyric[i + 1].Key : start + TimeSpan.FromSeconds(4);
+                double span = (end - start).TotalSeconds;
+                if (span <= 0.2) return 1;
+                double at = (Pos + TimeSpan.FromMilliseconds(OffsetMs) - start).TotalSeconds;
+                return Math.Max(0, Math.Min(1, at / span));
+            }
+        }
+
         public string LyricLine(int i)
         {
             if (Lyric == null || i < 0 || i >= Lyric.Count) return "";
             return Lyric[i].Value;
+        }
+
+
+        // 恢复只重建列表与选中项，绝不在这里碰 WPF 引擎
+        /// 把当前列表（仅本地曲目）、选中项与进度写进设置
+        public void RememberState(Settings cfg)
+        {
+            if (!HasSong) return;
+            int keep = Math.Min(Songs.Count, 80);
+            int start = Math.Max(0, Math.Min(Index, Math.Max(0, keep - 1)));
+            int n = 0;
+            for (int i = start; i < keep; i++)
+            {
+                var t = Songs[i];
+                if (t.Source != "本地" || !System.IO.File.Exists(t.LocalPath)) continue;
+                cfg.Set("pl" + n, t.LocalPath);
+                n++;
+                if (n >= 40) break;
+            }
+            for (int i = n; ; i++)
+            {
+                if (!cfg.Has("pl" + i)) break;
+                cfg.Remove("pl" + i);
+            }
+            cfg.Set("plCount", n);
+            cfg.Set("plPos", (int)Pos.TotalSeconds);
+        }
+
+        /// 只恢复列表与选中项，不拉起 WPF 引擎、也不自动播放
+        public void RestoreState(Settings cfg)
+        {
+            int n = cfg.Int("plCount", 0);
+            if (n <= 0) return;
+            var list = new List<Track>();
+            for (int i = 0; i < n; i++)
+            {
+                string path = cfg.Str("pl" + i, "");
+                if (path.Length == 0 || !System.IO.File.Exists(path)) continue;
+                string name = System.IO.Path.GetFileNameWithoutExtension(path);
+                string artist = "", title = name;
+                int dash = name.IndexOf(" - ", StringComparison.Ordinal);
+                if (dash > 0) { artist = name.Substring(0, dash).Trim(); title = name.Substring(dash + 3).Trim(); }
+                list.Add(new Track { Source = "本地", LocalPath = path, Title = title, Artist = artist });
+            }
+            if (list.Count == 0) return;
+            Songs.Clear();
+            Songs.AddRange(list);
+            Index = 0;
+            seekWhenReady = cfg.Int("plPos", 0);
+            Raise();
         }
 
         public void Dispose() { try { engine.Close(); } catch { } }
@@ -239,7 +322,8 @@ namespace WindowTool
                 tmrMusic.Tick += (s, e) => MusicTick();
                 tmrMusic.Start();
             }
-            music.Volume = Math.Max(0, Math.Min(100, cfg.Int("vol", 80)));
+            music.SetVolumeOnly(Math.Max(0, Math.Min(100, cfg.Int("vol", 80))));
+            music.RestoreState(cfg);
             UpdateMiniVisibility();
         }
 
@@ -252,7 +336,7 @@ namespace WindowTool
 
         void MusicTick()
         {
-            if (music == null) return;
+            if (music == null || !music.Started) return;
             music.Poll();
             if (miniVisible && mini != null) mini.Repaint();
             if (deskLyric != null && deskLyric.Visible) UpdateDeskLyric();
@@ -341,6 +425,7 @@ namespace WindowTool
             int i = music.LyricIndex;
             string line = i >= 0 ? music.LyricLine(i) : (music.Current == null ? "" : music.Current.Title);
             deskLyric.SetLine(line);
+            deskLyric.SetProgress(i >= 0 && music.Playing ? music.LineProgress : 0);
         }
 
         void UpdateBarLyric()
@@ -355,6 +440,7 @@ namespace WindowTool
         public void SaveMusic()
         {
             if (music == null) return;
+            music.RememberState(cfg);
             cfg.Set("vol", (int)Math.Round(music.Volume));
             cfg.Set("lyricOffset", music.OffsetMs);
             cfg.Set("loop", (int)music.Loop);

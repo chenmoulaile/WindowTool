@@ -28,6 +28,19 @@ namespace WindowTool
             Try(m, HK_PLAY, 'P', "P", fails);
             Try(m, HK_ALPHA_DEC, Native.VK_OEM_MINUS, "-", fails);
             Try(m, HK_ALPHA_INC, Native.VK_OEM_PLUS, "=", fails);
+
+            // 吸附走 Ctrl+Alt+Shift，避开已有的 Ctrl+Alt 组，也躲开显卡驱动的箭头绑定
+            uint ms = Native.MOD_CONTROL | Native.MOD_ALT | Native.MOD_SHIFT;
+            Try(ms, HK_SNAP_L, Native.VK_LEFT, "Shift+左", fails);
+            Try(ms, HK_SNAP_R, Native.VK_RIGHT, "Shift+右", fails);
+            Try(ms, HK_SNAP_T, Native.VK_UP, "Shift+上", fails);
+            Try(ms, HK_SNAP_B, Native.VK_DOWN, "Shift+下", fails);
+            Try(ms, HK_SNAP_Q1, 'Q', "Shift+Q", fails);
+            Try(ms, HK_SNAP_Q2, 'W', "Shift+W", fails);
+            Try(ms, HK_SNAP_Q3, 'E', "Shift+E", fails);
+            Try(ms, HK_SNAP_Q4, 'R', "Shift+R", fails);
+            Try(ms, HK_SNAP_MAX, 'M', "Shift+M", fails);
+            Try(ms, HK_SNAP_BACK, 'B', "Shift+B", fails);
             HotkeyFails = fails;
         }
 
@@ -42,10 +55,21 @@ namespace WindowTool
         {
             if (!IsHandleCreated) return;
             for (int id = HK_TOP; id <= HK_PLAY; id++) Native.UnregisterHotKey(Handle, id);
+            for (int id = HK_SNAP_L; id <= HK_SNAP_BACK; id++) Native.UnregisterHotKey(Handle, id);
         }
 
         protected override void WndProc(ref Message m)
         {
+            if (m.Msg == Native.WM_SETTINGCHANGE)
+            {
+                // 系统在浅色/深色之间切换时立刻跟随，不必重启
+                if (cfg != null && cfg.Int("darkMode", 0) == 2)
+                {
+                    bool want = SystemLightsDark();
+                    if (want != Theme.IsDark) ApplyTheme();
+                }
+                return;
+            }
             if (m.Msg == WM_HOTKEY) { DispatchHotkey(m.WParam.ToInt32()); return; }
             if (Program.WM_ALREADY_RUNNING != 0 && m.Msg == Program.WM_ALREADY_RUNNING)
             {
@@ -80,6 +104,16 @@ namespace WindowTool
             switch (id)
             {
                 case HK_PLAY: music.Toggle(); RebuildTrayMenu(); return;
+                case HK_SNAP_L: SnapTo(HotTarget(), SnapKind.Left); return;
+                case HK_SNAP_R: SnapTo(HotTarget(), SnapKind.Right); return;
+                case HK_SNAP_T: SnapTo(HotTarget(), SnapKind.Top); return;
+                case HK_SNAP_B: SnapTo(HotTarget(), SnapKind.Bottom); return;
+                case HK_SNAP_Q1: SnapTo(HotTarget(), SnapKind.TopLeft); return;
+                case HK_SNAP_Q2: SnapTo(HotTarget(), SnapKind.TopRight); return;
+                case HK_SNAP_Q3: SnapTo(HotTarget(), SnapKind.BottomLeft); return;
+                case HK_SNAP_Q4: SnapTo(HotTarget(), SnapKind.BottomRight); return;
+                case HK_SNAP_MAX: SnapTo(HotTarget(), SnapKind.Max); return;
+                case HK_SNAP_BACK: UnsnapTo(HotTarget()); return;
                 case HK_CANCELALL: CancelAllOp2(); return;
                 case HK_VRAND: RandomVideo(); return;
             }
@@ -168,6 +202,47 @@ namespace WindowTool
             if (current != null) current.Tick();
         }
 
+        public void SnapTo(IntPtr h, SnapKind kind)
+        {
+            if (!Ok(h)) return;
+            if (Manager.Snap(h, kind)) Toast("已吸附：" + SnapName(kind), ToastKind.Good);
+            else Toast("吸附失败（窗口可能处于全屏或特殊状态）。", ToastKind.Warn);
+        }
+
+        public void UnsnapTo(IntPtr h)
+        {
+            if (!Ok(h)) return;
+            if (Manager.Unsnap(h)) Toast("已还原到吸附前的位置与大小。", ToastKind.Good);
+            else Toast("该窗口没有被本工具吸附过。", ToastKind.Info);
+        }
+
+        public static string SnapName(SnapKind k)
+        {
+            switch (k)
+            {
+                case SnapKind.Left: return "左半";
+                case SnapKind.Right: return "右半";
+                case SnapKind.Top: return "上半";
+                case SnapKind.Bottom: return "下半";
+                case SnapKind.TopLeft: return "左上四分之一";
+                case SnapKind.TopRight: return "右上四分之一";
+                case SnapKind.BottomLeft: return "左下四分之一";
+                case SnapKind.BottomRight: return "右下四分之一";
+                case SnapKind.Max: return "铺满";
+            }
+            return "居中";
+        }
+
+        public void ToggleBlur(IntPtr h)
+        {
+            if (!Ok(h)) return;
+            bool on = !Manager.IsBlurred(h);
+            if (Manager.ApplyBlur(h, on))
+                Toast(on ? "已开启毛玻璃；若无变化说明该系统或该窗口不支持。" : "已关闭毛玻璃。",
+                    on ? ToastKind.Good : ToastKind.Info);
+            else Toast("毛玻璃设置失败。", ToastKind.Bad);
+        }
+
         public void SetAlpha(IntPtr h, int v)
         {
             if (!Ok(h)) return;
@@ -213,7 +288,7 @@ namespace WindowTool
                 videoIdx = 0;
                 playlistTarget = h;
                 lastSwitch = DateTime.Now;
-                ApplyBgCore(h, () => new BgWindow(h, path, CurrentFit()),
+                ApplyBgCore(h, () => new VideoBgWindow(h, path, CurrentFit()),
                     new BgMeta { Kind = "vid", Path = path, Alpha = BgAlpha(), Fit = (int)CurrentFit() });
                 Toast("视频背景循环播放中：" + Path.GetFileName(path), ToastKind.Good);
             }
@@ -333,7 +408,7 @@ namespace WindowTool
                 string path = videoFiles[ni];
                 lastSwitch = DateTime.Now;
                 var fit = CurrentFit();
-                ApplyBgCore(h, () => new BgWindow(h, path, fit),
+                ApplyBgCore(h, () => new VideoBgWindow(h, path, fit),
                     new BgMeta { Kind = "vid", Path = path, Alpha = BgAlpha(), Fit = (int)fit });
                 Toast("视频 [" + (ni + 1) + "/" + videoFiles.Length + "] " + Path.GetFileName(path), ToastKind.Good);
                 return true;
@@ -348,7 +423,7 @@ namespace WindowTool
             string path = videoFiles[index];
             lastSwitch = DateTime.Now;
             var fit = CurrentFit();
-            ApplyBgCore(h, () => new BgWindow(h, path, fit),
+            ApplyBgCore(h, () => new VideoBgWindow(h, path, fit),
                 new BgMeta { Kind = "vid", Path = path, Alpha = BgAlpha(), Fit = (int)fit });
             return true;
         }
@@ -436,7 +511,7 @@ namespace WindowTool
                         videoIdx = 0;
                         playlistTarget = wh;
                         lastSwitch = DateTime.Now;
-                        ApplyBgCore(wh, () => new BgWindow(wh, meta.Path, fit), meta);
+                        ApplyBgCore(wh, () => new VideoBgWindow(wh, meta.Path, fit), meta);
                     }
                     Toast("已恢复窗口背景：" + ent[1], ToastKind.Good);
                 }

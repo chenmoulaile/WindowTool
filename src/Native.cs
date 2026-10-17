@@ -22,6 +22,7 @@ namespace WindowTool
 
         public const uint SWP_NOSIZE = 0x0001;
         public const uint SWP_NOMOVE = 0x0002;
+        public const uint SWP_NOZORDER = 0x0004;
         public const uint SWP_NOACTIVATE = 0x0010;
         public const uint SWP_SHOWWINDOW = 0x0040;
 
@@ -35,6 +36,8 @@ namespace WindowTool
         public const uint MOD_WIN = 0x8;
         public const int VK_LEFT = 0x25;
         public const int VK_RIGHT = 0x27;
+        public const int VK_UP = 0x26;
+        public const int VK_DOWN = 0x28;
         public const int VK_OEM_PLUS = 0xBB;   // = 键
         public const int VK_OEM_MINUS = 0xBD;  // - 键
 
@@ -95,8 +98,71 @@ namespace WindowTool
         public static readonly IntPtr HWND_BROADCAST = new IntPtr(0xFFFF);
         [DllImport("dwmapi.dll")]
         public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+        [DllImport("dwmapi.dll")]
+        public static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS margins);
 
         public delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
+
+        // ---------- 亚克力 / 模糊 ----------
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MARGINS { public int Left, Right, Top, Bottom; }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ACCENT_POLICY
+        {
+            public int AccentState;
+            public int AccentFlags;
+            public uint GradientColor;
+            public int AnimationId;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct WCAATTRIB { public int Attribute; public IntPtr Data; public int SizeOfData; }
+
+        public const int WCA_ACCENT_POLICY = 19;
+        public const int ACCENT_DISABLED = 0;
+        public const int ACCENT_BLURBEHIND = 3;
+        public const int ACCENT_ACRYLIC = 4;
+
+        [DllImport("user32.dll")]
+        public static extern int SetWindowCompositionAttribute(IntPtr hwnd, ref WCAATTRIB data);
+
+        // ---------- 内存 ----------
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr GetCurrentProcess();
+        [DllImport("kernel32.dll")]
+        public static extern bool SetProcessWorkingSetSize(IntPtr p, int min, int max);
+
+        // ---------- 其它 ----------
+        public const int WM_SETTINGCHANGE = 0x001A;
+        public const int SM_CXSCREEN = 0;
+        public const int SM_CYSCREEN = 1;
+
+        // ---------- 显示器工作区（窗口吸附用） ----------
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MONITORINFO
+        {
+            public int cbSize;
+            public RECT rcMonitor;
+            public RECT rcWork;
+            public uint dwFlags;
+        }
+
+        public const uint MONITOR_DEFAULTTONEAREST = 2;
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+        [DllImport("user32.dll")]
+        public static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
+
+        [DllImport("user32.dll")]
+        public static extern int GetSystemMetrics(int nIndex);
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        public const int SW_HIDE = 0;
+        public const int SW_RESTORE = 9;
+        public const int SW_SHOW = 5;
 
         [StructLayout(LayoutKind.Sequential)]
         public struct RECT { public int Left, Top, Right, Bottom; }

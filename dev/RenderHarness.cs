@@ -33,11 +33,12 @@ namespace WindowTool
             catch { }
 
             SelfCheck();
+            PresetCheck();
 
             if (argv.Length > 1 && argv[1] == "smoke") { Smoke(); return; }
 
             MainForm.DesignRender = true;
-            string[] keys = { "window", "bg", "music", "env", "general" };
+            string[] keys = { "window", "bg", "music", "layout", "env", "general" };
             foreach (string mode in new[] { "light", "dark" })
             {
                 WriteSettings(mode == "dark" ? "darkMode=1" : "darkMode=0");
@@ -129,6 +130,48 @@ namespace WindowTool
             Console.WriteLine("at 0:16 -> " + Lrc.IndexAt(lines, TimeSpan.FromSeconds(16)));
             Console.WriteLine("at 1:10 -> " + Lrc.IndexAt(lines, TimeSpan.FromSeconds(70)));
             Console.WriteLine("at 0:01 -> " + Lrc.IndexAt(lines, TimeSpan.FromSeconds(1)));
+        }
+
+        // 走真实的 AddPreset / SavePresets / LoadPresets 往返；不建窗口、不建托盘
+        static void PresetCheck()
+        {
+            MainForm.DesignRender = true;
+            WriteSettings("darkMode=0");
+            var f = new MainForm();
+
+            var p = new Preset { Name = "刷题 A|B" };
+            p.Items.Add(new PresetEntry
+            {
+                Proc = "sublime_text", Title = "std.cpp | 模拟赛",
+                X = 10, Y = 20, W = 800, H = 600, HasRect = true, Top = true, Alpha = 200
+            });
+            p.Items.Add(new PresetEntry
+            {
+                Proc = "chrome", Title = "OJ",
+                X = 0, Y = 0, W = 1024, H = 768, HasRect = true, Top = false, Alpha = 255
+            });
+
+            f.AddPreset(p);
+            f.Dispose();
+
+            // 重新构造：强制走 settings.txt 的磁盘往返，而不是复用内存里的 cfg
+            var f2 = new MainForm();
+            Console.WriteLine("CHK count=" + f2.Presets.Count);
+            if (f2.Presets.Count == 1)
+            {
+                var g = f2.Presets[0];
+                Console.WriteLine("CHK name=[" + g.Name + "] items=" + g.Items.Count);
+                foreach (var e in g.Items)
+                    Console.WriteLine("  e proc=[" + e.Proc + "] title=[" + e.Title + "] " +
+                        e.X + "," + e.Y + " " + e.W + "x" + e.H +
+                        " hasRect=" + e.HasRect + " top=" + e.Top + " alpha=" + e.Alpha);
+            }
+            f2.DeletePreset(f2.Presets.Count > 0 ? f2.Presets[0] : p);
+            f2.Dispose();
+
+            var f3 = new MainForm();
+            Console.WriteLine("CHK afterDelete=" + f3.Presets.Count);
+            f3.Dispose();
         }
 
         static void WriteSettings(string extra)

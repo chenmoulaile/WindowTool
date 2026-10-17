@@ -9,6 +9,22 @@ namespace WindowTool
     // 不走 Program.Main，所以不碰单实例互斥体，可以和他正在跑的实例共存。
     static class ChromeProbe
     {
+        static void Report()
+        {
+            var me = System.Diagnostics.Process.GetCurrentProcess();
+            Console.WriteLine(string.Format("MEM workingset={0:N0} KB  private={1:N0} KB  peak={2:N0} KB", me.WorkingSet64 / 1024.0, me.PrivateMemorySize64 / 1024.0, me.PeakWorkingSet64 / 1024.0));
+            bool wpf = false, integ = false;
+            foreach (System.Reflection.Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                string n = a.GetName().Name;
+                if (n == "PresentationCore" || n == "PresentationFramework" || n == "WindowsBase") wpf = true;
+                if (n == "WindowsFormsIntegration") integ = true;
+            }
+            Console.WriteLine("WPF loaded=" + wpf + "  ElementHost loaded=" + integ);
+            foreach (System.Reflection.Assembly a in AppDomain.CurrentDomain.GetAssemblies())
+                if (a.GetName().Name.IndexOf("Presentation", StringComparison.Ordinal) >= 0 || a.GetName().Name == "WindowsBase") Console.WriteLine("  loaded: " + a.GetName().Name);
+        }
+
         [STAThread]
         static void Main(string[] argv)
         {
@@ -25,6 +41,8 @@ namespace WindowTool
             string shot = argv.Length > 1 ? argv[1] : "build/probe.png";
 
             var f = new MainForm();
+            Report();
+            Console.WriteLine("-- after ctor --");
             f.StartPosition = FormStartPosition.Manual;
             f.Location = new Point(140, 110);
             f.Text = "外壳探针";
@@ -45,6 +63,7 @@ namespace WindowTool
                     Console.WriteLine("PROBE shot saved " + shot + " bounds=" + f.Bounds);
                 }
                 catch (Exception ex) { Console.Error.WriteLine("PROBE capture failed: " + ex.Message); }
+                Report();
                 f.ExitApp();
             };
             f.Shown += (s, e) => t.Start();

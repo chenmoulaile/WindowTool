@@ -24,7 +24,10 @@ namespace WindowTool
         const int WM_HOTKEY = 0x0312;
         const int HK_TOP = 1, HK_OP2 = 2, HK_UP = 3, HK_DOWN = 4, HK_CANCELONE = 5,
                   HK_CANCELALL = 6, HK_IMG = 7, HK_VID = 8, HK_BGOFF = 9,
-                  HK_ALPHA_DEC = 10, HK_ALPHA_INC = 11, HK_VRAND = 12, HK_PLAY = 13;
+                  HK_ALPHA_DEC = 10, HK_ALPHA_INC = 11, HK_VRAND = 12, HK_PLAY = 13,
+                  HK_SNAP_L = 20, HK_SNAP_R = 21, HK_SNAP_T = 22, HK_SNAP_B = 23,
+                  HK_SNAP_Q1 = 24, HK_SNAP_Q2 = 25, HK_SNAP_Q3 = 26, HK_SNAP_Q4 = 27,
+                  HK_SNAP_MAX = 28, HK_SNAP_BACK = 29;
 
         public static bool DesignRender;
 
@@ -42,7 +45,7 @@ namespace WindowTool
         ContextMenuStrip trayMenu;
         bool startupHidden, reallyExit, balloonShown, loading;
 
-        Timer tmr, tmrBg, tmrAuto;
+        Timer tmr, tmrBg, tmrAuto, trimT;
         MouseCapture capture;
         readonly uint selfPid = (uint)System.Diagnostics.Process.GetCurrentProcess().Id;
 
@@ -86,6 +89,7 @@ namespace WindowTool
 
             RefreshWindows();
             LoadPrefs();
+            LoadPresets();
             SelectPage(cfg.Str("page", "window"), true);
 
             if (DesignRender) return;
@@ -93,6 +97,7 @@ namespace WindowTool
             tmr.Start();
             tmrBg.Start();
             tmrAuto.Start();
+            trimT.Start();
         }
 
         // ---------------- 主题 ----------------
@@ -175,12 +180,14 @@ namespace WindowTool
             AddSidebarItem("bg", "背景", "图片与视频", Glyph.Picture, Color.FromArgb(175, 82, 222));
             AddSidebarItem("music", "音乐", "播放与歌词", Glyph.Music, Color.FromArgb(255, 45, 85));
             AddSidebarItem("env", "竞赛环境", "一键部署", Glyph.Box, Color.FromArgb(48, 176, 199));
+            AddSidebarItem("layout", "布局方案", "一键摆位", Glyph.Layers, Color.FromArgb(88, 86, 214));
             AddSidebarItem("general", "通用", "外观与热键", Glyph.Gear, Color.FromArgb(142, 142, 147));
 
             Register(new WindowPage(this));
             Register(new BackgroundPage(this));
             Register(new MusicPage(this));
             Register(new EnvPage(this));
+            Register(new LayoutPage(this));
             Register(new GeneralPage(this));
         }
 
@@ -299,10 +306,16 @@ namespace WindowTool
 
         public bool Ok(IntPtr h) { return h != IntPtr.Zero && Native.IsWindow(h); }
 
+        // 复用缓冲区：EnumWindows 是 UI 线程同步回调，重复刷新时不必每次新建字符串构造器
+        static readonly StringBuilder sbTitle = new StringBuilder(512);
+        static readonly StringBuilder sbClass = new StringBuilder(256);
+        readonly List<WinEntry> refreshScratch = new List<WinEntry>();
+
         public void RefreshWindows()
         {
             IntPtr keep = selected;
-            winList.Clear();
+            refreshScratch.Clear();
+            sbTitle.EnsureCapacity(512);
             Native.EnumWindows((h, lp) =>
             {
                 if (!Native.IsWindowVisible(h)) return true;
@@ -312,15 +325,35 @@ namespace WindowTool
                 if (pid == selfPid) return true;
                 int ex = Native.GetWindowLong(h, Native.GWL_EXSTYLE);
                 if ((ex & Native.WS_EX_TOOLWINDOW) != 0) return true;
-                var sbT = new StringBuilder(len + 2);
-                Native.GetWindowText(h, sbT, sbT.Capacity);
-                var sbC = new StringBuilder(256);
-                Native.GetClassName(h, sbC, 256);
-                string cls = sbC.ToString();
+
+                sbTitle.Length = 0;
+                Native.GetWindowText(h, sbTitle, sbTitle.Capacity);
+                sbClass.Length = 0;
+                Native.GetClassName(h, sbClass, sbClass.Capacity);
+                string cls = sbClass.ToString();
                 if (cls == "Progman" || cls == "WorkerW") return true;
-                winList.Add(new WinEntry { Hwnd = h, Title = sbT.ToString(), Cls = cls, Proc = ProcName(pid), Icon = IconFor(h) });
+                string title = sbTitle.ToString();
+
+                // 标题与类名没变就复用原对象，避免每次刷新重建整张列表
+                WinEntry e;
+                if (!byHwnd.TryGetValue(h, out e) || e.Title != title || e.Cls != cls)
+                {
+                    e = new WinEntry { Hwnd = h, Title = title, Cls = cls, Proc = ProcName(pid), Icon = IconFor(h) };
+                    byHwnd[h] = e;
+                }
+                refreshScratch.Add(e);
                 return true;
             }, IntPtr.Zero);
+
+            winList.Clear();
+            winList.AddRange(refreshScratch);
+
+            if (byHwnd.Count > winList.Count + 32)
+            {
+                var dead = new List<IntPtr>(byHwnd.Count);
+                foreach (var kv in byHwnd) if (!Native.IsWindow(kv.Key)) dead.Add(kv.Key);
+                foreach (var d in dead) byHwnd.Remove(d);
+            }
 
             bool found = false;
             foreach (var w in winList) if (w.Hwnd == keep) found = true;
@@ -333,8 +366,14 @@ namespace WindowTool
             RaiseTarget();
         }
 
+        // 缓存必须有界：图标按 PID 缓存且原先从不清理，进程退出后位图还留着，
+        // 长时间挂机会一直涨。图标也统一缩到 32px 再存（原始可能是 256px，一张就 256KB）。
+        const int MaxCachedProcs = 192;
+        const int MaxCachedIcons = 48;
         static readonly Dictionary<uint, string> procCache = new Dictionary<uint, string>();
+        static readonly Queue<uint> procOrder = new Queue<uint>();
         static readonly Dictionary<uint, Image> iconCache = new Dictionary<uint, Image>();
+        static readonly Queue<uint> iconOrder = new Queue<uint>();
 
         static string ProcName(uint pid)
         {
@@ -343,6 +382,8 @@ namespace WindowTool
             try { using (var p = System.Diagnostics.Process.GetProcessById((int)pid)) s = p.ProcessName; }
             catch { s = ""; }
             procCache[pid] = s;
+            procOrder.Enqueue(pid);
+            while (procOrder.Count > MaxCachedProcs) procCache.Remove(procOrder.Dequeue());
             return s;
         }
 
@@ -355,15 +396,51 @@ namespace WindowTool
             try
             {
                 using (var p = System.Diagnostics.Process.GetProcessById((int)pid))
+                using (var ic = System.Drawing.Icon.ExtractAssociatedIcon(p.MainModule.FileName))
                 {
-                    var ic = System.Drawing.Icon.ExtractAssociatedIcon(p.MainModule.FileName);
-                    if (ic != null) img = ic.ToBitmap();
+                    if (ic != null)
+                    {
+                        var small = new Bitmap(32, 32, PixelFormat.Format32bppArgb);
+                        using (var g = Graphics.FromImage(small))
+                        {
+                            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                            g.DrawImage(ic.ToBitmap(), 0, 0, 32, 32);
+                        }
+                        img = small;
+                    }
                 }
             }
             catch { }
             iconCache[pid] = img;
+            iconOrder.Enqueue(pid);
+            while (iconOrder.Count > MaxCachedIcons)
+            {
+                uint dead = iconOrder.Dequeue();
+                Image old;
+                if (iconCache.TryGetValue(dead, out old))
+                {
+                    iconCache.Remove(dead);
+                    if (old != null) old.Dispose();
+                }
+            }
             return img;
         }
+
+        /// 把工作集交还给系统。隐藏到托盘后调用，驻留后台时内存占用能明显降下来。
+        public static void TrimWorkingSet()
+        {
+            try
+            {
+                GC.Collect(2, GCCollectionMode.Forced);
+                GC.WaitForPendingFinalizers();
+                GC.Collect(2, GCCollectionMode.Forced);
+                Native.SetProcessWorkingSetSize(Native.GetCurrentProcess(), -1, -1);
+            }
+            catch (Exception ex) { Program.Log(ex); }
+        }
+
+        /// 按 HWND 复用条目，避免每次刷新都重建整张列表和重新取图标
+        readonly Dictionary<IntPtr, WinEntry> byHwnd = new Dictionary<IntPtr, WinEntry>();
 
         public void SetTarget(IntPtr h)
         {
@@ -381,7 +458,7 @@ namespace WindowTool
         public void AddPicked(IntPtr h)
         {
             var sbT = new StringBuilder(512);
-            Native.GetWindowText(h, sbT, 512);
+            Native.GetWindowText(h, sbT, sbT.Capacity);
             var sbC = new StringBuilder(256);
             Native.GetClassName(h, sbC, 256);
             uint pid; Native.GetWindowThreadProcessId(h, out pid);
@@ -399,8 +476,8 @@ namespace WindowTool
 
         public WinEntry Entry(IntPtr h)
         {
-            foreach (var w in winList) if (w.Hwnd == h) return w;
-            return null;
+            WinEntry e;
+            return byHwnd.TryGetValue(h, out e) ? e : null;
         }
 
         public List<WinEntry> WindowList { get { return winList; } }
@@ -432,7 +509,7 @@ namespace WindowTool
                 Fit = (int)CurrentFit()
             };
             var fit = CurrentFit();
-            ApplyBgCore(playlistTarget, () => new BgWindow(playlistTarget, path, fit), meta);
+            ApplyBgCore(playlistTarget, () => new VideoBgWindow(playlistTarget, path, fit), meta);
         }
 
         public void SetBgAlpha(int v)
@@ -514,6 +591,8 @@ namespace WindowTool
             tmrBg.Tick += OnBgTick;
             tmrAuto = new Timer { Interval = 1000 };
             tmrAuto.Tick += OnSecondTick;
+            trimT = new Timer { Interval = 4000 };
+            trimT.Tick += (sn, ev) => { trimT.Stop(); TrimWorkingSet(); };
         }
 
         void OnTick(object sender, EventArgs e)
@@ -659,6 +738,7 @@ namespace WindowTool
             {
                 e.Cancel = true;
                 Hide();
+                if (trimT != null) trimT.Start();     // 收进托盘后把内存交还系统
                 if (!balloonShown)
                 {
                     balloonShown = true;
@@ -674,6 +754,7 @@ namespace WindowTool
             if (tmr != null) tmr.Stop();
             if (tmrBg != null) tmrBg.Stop();
             if (tmrAuto != null) tmrAuto.Stop();
+            if (trimT != null) { trimT.Stop(); trimT.Dispose(); trimT = null; }
             UnregisterHotkeys();
             if (capture != null) capture.Dispose();
             StopMusic();
@@ -688,6 +769,7 @@ namespace WindowTool
                 Manager.ClearBg(kv.Key);
                 CloseBgForm(kv.Key);
             }
+            try { Manager.DisableAllBlurs(); } catch (Exception ex) { Program.Log(ex); }
             try { Manager.CancelAll(); } catch (Exception ex) { Program.Log(ex); }
             try { Manager.RestoreAll(); } catch (Exception ex) { Program.Log(ex); }
             base.OnFormClosed(e);

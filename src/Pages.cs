@@ -12,7 +12,9 @@ namespace WindowTool
         MacButton btnRefresh, btnPick;
         MacSwitch swTop, swOp2;
         MacSlider slAlpha;
-        MacButton btnUp, btnDown, btnBottom, btnCancelAll;
+        MacButton btnUp, btnDown, btnBottom, btnCancelAll, btnUnsnap;
+        MacSwitch swBlur;
+        SnapPad pad;
         Label lblTarget, lblPinned;
         string filter = "";
 
@@ -83,7 +85,28 @@ namespace WindowTool
                 Row("层级调整", "仅在同一层级带内移动，不会误跨置顶层（Ctrl+Alt+3 / 4）", btnBottom, btnDown, btnUp),
                 Row("已开启穿透置顶", "先开启的窗口始终压在后开启的之上", btnCancelAll));
 
+            swBlur = new MacSwitch();
+            swBlur.CheckedChanged += (s, e) =>
+            {
+                if (!Host.Ok(Host.Target)) { swBlur.SetCheckedSilent(false); return; }
+                Host.ToggleBlur(Host.Target);
+            };
+            btnUnsnap = Btn("还原吸附", MacTone.Normal, (s, e) => Host.UnsnapTo(Host.Target));
+            Fit(btnUnsnap);
+            pad = new SnapPad();
+            pad.Picked += k => Host.SnapTo(Host.Target, k);
+
+            Card("外观",
+                Row("毛玻璃（亚克力）", "给窗口叠一层模糊；Win11 效果最好，部分窗口不支持", swBlur));
+            FreeCard("分屏吸附", H(104), LayoutSnap, pad, btnUnsnap);
+
             OnTick(Sync);
+        }
+
+        void LayoutSnap(MacCard card, int w)
+        {
+                        Put(pad, card, H(14), 0, w - H(28) - btnUnsnap.Width - H(12), H(104));
+            Put(btnUnsnap, card, pad.Right + H(12), H(38), btnUnsnap.Width, H(28));
         }
 
         void LayoutPicker(MacCard card, int w)
@@ -146,6 +169,9 @@ namespace WindowTool
                 btnBottom.Enabled = ok;
                 swTop.SetCheckedSilent(ok && Manager.IsTopmost(t));
                 swOp2.SetCheckedSilent(ok && Manager.HasOp2(t));
+                swBlur.Enabled = ok;
+                swBlur.SetCheckedSilent(ok && Manager.IsBlurred(t));
+                btnUnsnap.Enabled = ok && Manager.HasSnapBackup(t);
                 if (ok) slAlpha.SetValueSilent(Manager.GetLastAlpha(t));
                 btnCancelAll.Enabled = Manager.PinnedCount > 0;
                 lblPinned.Text = Manager.PinnedCount + " 个";

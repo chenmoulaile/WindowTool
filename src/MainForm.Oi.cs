@@ -48,6 +48,35 @@ namespace WindowTool
             if (OiUi != null) OiUi.Bar(pct);
         }
 
+        public string ExportSettings(string dest)
+        {
+            Save();
+            File.Copy(SettingsPath(), dest, true);
+            return dest;
+        }
+
+        public bool ImportSettings(string src)
+        {
+            try
+            {
+                string txt = File.ReadAllText(src);
+                File.WriteAllText(SettingsPath(), txt);
+                return true;
+            }
+            catch (Exception ex) { Program.Log(ex); return false; }
+        }
+
+        /// 删掉设置文件并退出：下次启动即为出厂默认
+        public void ResetSettings()
+        {
+            try { File.Delete(SettingsPath()); }
+            catch (Exception ex) { Program.Log(ex); }
+            reallyExit = true;
+            try { Process.Start(new ProcessStartInfo(Application.ExecutablePath) { UseShellExecute = true }); }
+            catch (Exception ex) { Program.Log(ex); }
+            Close();
+        }
+
         public void ExitApp()
         {
             reallyExit = true;

@@ -402,6 +402,7 @@ namespace WindowTool
         MacSwatches swatch;
         MacSlider slRadius;
         MacSwitch swAutoRun, swSilent;
+        MacButton btnExport, btnImport, btnReset;
         Label lblKeys, lblVer;
 
         public GeneralPage(MainForm h) : base(h) { }
@@ -461,9 +462,16 @@ namespace WindowTool
             Fit(btnCfg);
             lblVer = Lbl("", Theme.FontSmall, Theme.TextDim);
             lblVer.Width = H(420);
+            btnExport = Btn("导出设置", MacTone.Normal, (s, e) => Export());
+            btnImport = Btn("导入设置", MacTone.Normal, (s, e) => Import());
+            btnReset = Btn("恢复默认并重启", MacTone.Danger, (s, e) => Reset());
+            Fit(btnExport); Fit(btnImport); Fit(btnReset);
+
             Card("其他",
                 Row("彻底退出", "取消全部置顶/穿透、恢复透明度与背景样式", btnExit),
                 Row("配置", "所有设置实时写入 exe 同目录的 settings.txt", btnCfg),
+                Row("迁移", "导出 / 导入设置文件；导入后需重启生效", btnImport, btnExport),
+                Row("重置", "删除设置文件并以出厂默认重新启动", btnReset),
                 Row("版本", "", lblVer));
 
             OnTick(Sync);
@@ -474,6 +482,43 @@ namespace WindowTool
             int w = 0;
             foreach (char c in v) w += c < 256 ? 1 : 2;
             return w >= n ? v : v + new string('　', (n - w + 1) / 2);
+        }
+
+        void Export()
+        {
+            using (var dlg = new SaveFileDialog())
+            {
+                dlg.Title = "导出设置";
+                dlg.Filter = "设置文件|settings.txt|所有文件|*.*";
+                dlg.FileName = "WindowTool-settings.txt";
+                if (dlg.ShowDialog(Host) != DialogResult.OK) return;
+                try
+                {
+                    Host.ExportSettings(dlg.FileName);
+                    Host.ToastGood("已导出到 " + dlg.FileName);
+                }
+                catch (Exception ex) { Host.ToastBad("导出失败：" + ex.Message); }
+            }
+        }
+
+        void Import()
+        {
+            using (var dlg = new OpenFileDialog())
+            {
+                dlg.Title = "导入设置";
+                dlg.Filter = "设置文件|*.txt|所有文件|*.*";
+                if (dlg.ShowDialog(Host) != DialogResult.OK) return;
+                if (!Host.ImportSettings(dlg.FileName)) { Host.ToastBad("导入失败，文件无法读取。"); return; }
+                Host.ToastWarn("已导入，需要重启程序才会全部生效。");
+            }
+        }
+
+        void Reset()
+        {
+            var r = MessageBox.Show(Host, "将删除 settings.txt 并以默认设置重新启动，确定吗？",
+                "恢复默认", MessageBoxButtons.OKCancel, MessageBoxIcon.Warning);
+            if (r != DialogResult.OK) return;
+            Host.ResetSettings();
         }
 
         void SetAutoRun(bool on)
