@@ -9,7 +9,8 @@ build.bat
 - 编译器：`%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe`（只支持 C# 5 语法：
   禁止字符串插值 `$""`、`?.`、模式匹配 `is T x`、表达式体成员等新语法）
 - 引用系统自带 WPF 程序集（视频背景用），清单 app.manifest 提供 DPI 感知
-- 构建前若 WindowTool.exe 被占用，先结束运行中的 WindowTool 进程
+- 构建前若 WindowTool.exe 被占用，**不要自行结束进程**：用户可能正在用它（也会连带影响他正在用的其他窗口）。
+  先说明情况并等确认，或改用 `build\WindowTool.exe` 这个输出路径继续验证。
 
 ## 打包（每次改动后必须执行）
 

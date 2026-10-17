@@ -4,6 +4,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace WindowTool
@@ -33,9 +34,12 @@ namespace WindowTool
             catch { }
 
             SelfCheck();
+            MotionCheck();
+            IconSheet(dir);
             PresetCheck();
 
             if (argv.Length > 1 && argv[1] == "smoke") { Smoke(); return; }
+            MenuShot(dir);
 
             MainForm.DesignRender = true;
             string[] keys = { "window", "bg", "music", "layout", "env", "general" };
@@ -80,22 +84,26 @@ namespace WindowTool
             Console.WriteLine("RENDER DONE scale=" + Theme.Scale + " dir=" + dir);
         }
 
-        // 无窗口冒烟测试：走真实启动路径（托盘、热键注册、全部定时器），但从不 Show 窗口
+        // 冒烟测试：DesignRender=true 走完整构造（含托盘菜单构建、定时器字段、页面切换），
+        // 但不显示窗口、不创建可见托盘图标、不注册全局热键——那三样会打扰正在使用电脑的用户。
         static void Smoke()
         {
             string logPath = Path.Combine(Path.GetTempPath(), "WindowTool_crash.log");
             long before = File.Exists(logPath) ? new FileInfo(logPath).Length : 0;
+            MainForm.DesignRender = true;
             var f = new MainForm();
             f.CreateControl();
+            StartTimers(f);
+            FeatureCheck(f);
             for (int i = 0; i < 90; i++)
             {
                 Application.DoEvents();
                 Thread.Sleep(20);
-                if (i == 30) f.SelectPage("music", true);
-                if (i == 50) f.SelectPage("env", true);
-                if (i == 70) f.SelectPage("window", true);
+                if (i == 30) f.SelectPage("music", false);
+                if (i == 50) f.SelectPage("env", false);
+                if (i == 70) f.SelectPage("window", false);
             }
-            Console.WriteLine("SMOKE pages switched, timers ran. hotkeyFails=" + f.HotkeyFails.Count);
+            Console.WriteLine("SMOKE pages switched with animation, timers ran.");
             f.Close();
             for (int i = 0; i < 10; i++) { Application.DoEvents(); Thread.Sleep(20); }
             long after = File.Exists(logPath) ? new FileInfo(logPath).Length : 0;
@@ -105,6 +113,109 @@ namespace WindowTool
                 string all = File.ReadAllText(logPath);
                 Console.Error.WriteLine("SMOKE NEW CRASH ENTRIES:\n" + all.Substring((int)before));            }
             Console.WriteLine(after > before ? "SMOKE FAIL" : "SMOKE OK");
+        }
+
+        static string Touch(string name)
+        {
+            string p = Path.Combine(Path.GetTempPath(), name);
+            File.WriteAllText(p, "0");
+            return p;
+        }
+
+        static void StartTimers(MainForm f)
+        {
+            var fi = typeof(MainForm).GetField("tmr", BindingFlags.NonPublic | BindingFlags.Instance);
+            var fb = typeof(MainForm).GetField("tmrBg", BindingFlags.NonPublic | BindingFlags.Instance);
+            var fa = typeof(MainForm).GetField("tmrAuto", BindingFlags.NonPublic | BindingFlags.Instance);
+            foreach (var m in new[] { fi, fb, fa })
+            {
+                if (m == null) continue;
+                var t = m.GetValue(f) as System.Windows.Forms.Timer;
+                if (t != null) { t.Interval = 120; t.Start(); }
+            }
+        }
+
+        // v1.13 那批功能的离线核对：几何、状态往返、设置导入导出、主题热切
+        static void FeatureCheck(MainForm f)
+        {
+            var wa = new Rectangle(0, 0, 1920, 1040);
+            var l = Manager.SnapRect(SnapKind.Left, wa, Rectangle.Empty, false);
+            var r = Manager.SnapRect(SnapKind.Right, wa, Rectangle.Empty, false);
+            Console.WriteLine("SNAP left=" + l + " right=" + r + " tile=" + (l.Right == r.X && l.Width + r.Width == wa.Width));
+            var tl = Manager.SnapRect(SnapKind.TopLeft, wa, Rectangle.Empty, false);
+            var br = Manager.SnapRect(SnapKind.BottomRight, wa, Rectangle.Empty, false);
+            Console.WriteLine("SNAP topleft=" + tl + " bottomright=" + br);
+            var odd = Manager.SnapRect(SnapKind.Left, new Rectangle(0, 0, 1011, 1011), Rectangle.Empty, false);
+            var oddR = Manager.SnapRect(SnapKind.Right, new Rectangle(0, 0, 1011, 1011), Rectangle.Empty, false);
+            Console.WriteLine("SNAP odd-width cover=" + (odd.Width + oddR.Width));
+            var mx = Manager.SnapRect(SnapKind.Max, wa, Rectangle.Empty, false);
+            Console.WriteLine("SNAP max==workarea:" + (mx == wa));
+            var ct = Manager.SnapRect(SnapKind.Center, wa, new Rectangle(-500, -500, 800, 600), true);
+            Console.WriteLine("SNAP center=" + ct + " centered=" + (ct.X + ct.Width / 2 == 960 && ct.Y + ct.Height / 2 == 520));
+
+            // 播放列表与进度的磁盘往返：只认真实存在的本地文件，网易条目不落盘
+            string p1 = Touch("wt_a - 夜曲.mp3"), p2 = Touch("wt_b.mp3");
+            var cfg = new Settings();
+            f.Music.Songs.Clear();
+            f.Music.Songs.Add(new Track { Source = "本地", LocalPath = p1, Title = "A", Artist = "x" });
+            f.Music.Songs.Add(new Track { Source = "本地", LocalPath = p2, Title = "B", Artist = "y" });
+            f.Music.Songs.Add(new Track { Source = "网易", NetId = "12345", Title = "C", Artist = "z" });
+            f.Music.Index = 0;
+            f.Music.RememberState(cfg);
+            var f2 = new MainForm();
+            f2.Music.RestoreState(cfg);
+            Console.WriteLine("PLIST saved=" + cfg.Int("plCount", -1) + " restored=" + f2.Music.Songs.Count
+                + " at=" + f2.Music.Index
+                + " first=[" + (f2.Music.Songs.Count > 0 ? f2.Music.Songs[0].Artist + " / " + f2.Music.Songs[0].Title : "?") + "]"
+                + " want=2/2 (网易条目应被丢弃, 文件名要拆出歌手)");
+            f2.Dispose();
+            try { File.Delete(p1); File.Delete(p2); } catch { }
+
+            // 设置导出 / 导入：导出返回目标路径，导入后值必须回得来
+            string tmp = Path.Combine(Path.GetTempPath(), "wt_export_check.txt");
+            f.Cfg.Set("radius", 13);
+            string settingsPath = Path.Combine(Application.StartupPath, "settings.txt");
+            f.Cfg.Set("hue", 2);
+            string got = f.ExportSettings(tmp);
+            bool copied = got == tmp && File.Exists(tmp) && new FileInfo(tmp).Length > 0;
+            File.AppendAllText(settingsPath, "radius=4" + (char)10 + "hue=0" + (char)10);
+            bool imp = f.ImportSettings(tmp);
+            var back = Settings.Load(settingsPath);
+            Console.WriteLine("EXPORT ok=" + copied + " IMPORT ok=" + imp
+                + " radius=" + back.Int("radius", -1) + " hue=" + back.Int("hue", -1)
+                + " want=True/True/13/2");
+            try { File.Delete(tmp); } catch { }
+
+            // 主题热切（等价于收到 WM_SETTINGCHANGE 后的重建）
+            try
+            {
+                Theme.SetDark(true); f.ApplyTheme();
+                Theme.SetDark(false); f.ApplyTheme();
+                Console.WriteLine("THEME live switch ok, dark=" + Theme.IsDark);
+            }
+            catch (Exception ex) { Console.WriteLine("THEME FAIL " + ex.Message); }
+
+            // 托盘菜单重建：条目、图标、勾选态都得在打开前刷新
+            var menuField = typeof(MainForm).GetField("trayMenu", BindingFlags.NonPublic | BindingFlags.Instance);
+            var mm = menuField.GetValue(f) as MacMenu;
+            var rebuild = typeof(MainForm).GetMethod("RebuildTrayMenu", BindingFlags.NonPublic | BindingFlags.Instance);
+            rebuild.Invoke(f, null);
+            int withIcon = 0, rows = 0;
+            foreach (ToolStripItem it in mm.Items)
+            {
+                var mi = it as MacMenuItem;
+                if (mi == null || mi.Line) continue;
+                rows++;
+                if (mi.Width > 40 && mi.Height > 20) withIcon++;
+            }
+            Console.WriteLine("TRAYMENU items=" + mm.Items.Count + " rows=" + rows + " sized=" + withIcon);
+            mm.Dispose();
+            f2 = null;
+
+            // 毛玻璃：无效句柄必须安静地返回 false，不能抛
+            Console.WriteLine("BLUR invalid-hwnd apply=" + Manager.ApplyBlur(new IntPtr(12345), true)
+                + " isBlurred=" + Manager.IsBlurred(new IntPtr(12345))
+                + " snapInvalid=" + Manager.Snap(new IntPtr(12345), SnapKind.Left));
         }
 
         static void Force(object o, string field, object val)
@@ -119,6 +230,145 @@ namespace WindowTool
             var m = o.GetType().GetMethod(method, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             if (m == null) { Console.Error.WriteLine("no method " + method); return; }
             m.Invoke(o, null);
+        }
+
+        // 动画引擎自检：曲线端点、补间替换、时钟收尾
+        static void MotionCheck()
+        {
+            Console.WriteLine("MOTION curve out(0)=" + Motion.Curve(Ease.Out, 0f) +
+                " out(1)=" + Motion.Curve(Ease.Out, 1f) +
+                " inOut(.5)=" + Motion.Curve(Ease.InOut, 0.5f) +
+                " spring(1)=" + Motion.Curve(Ease.Spring, 1f) +
+                " clamp(-1)=" + Motion.Curve(Ease.Out, -1f) +
+                " clamp(9)=" + Motion.Curve(Ease.Out, 9f));
+
+            Motion.Enabled = true;
+            int hits = 0;
+            float last = -1f;
+            bool done = false;
+            object tag = new object();
+            Motion.To(tag, 90, Ease.Out, delegate(float t) { hits++; last = t; }, delegate { done = true; });
+            for (int i = 0; i < 40 && !done; i++) { Application.DoEvents(); Thread.Sleep(10); }
+            Console.WriteLine("MOTION tween hits=" + hits + " last=" + last + " done=" + done);
+
+            // 同一 tag 必须互相顶替，否则快速切页时两条补间会抢同一个属性
+            int a = 0, b = 0;
+            object t2 = new object();
+            Motion.To(t2, 400, Ease.Linear, delegate(float t) { a++; });
+            Motion.To(t2, 400, Ease.Linear, delegate(float t) { b++; });
+            for (int i = 0; i < 6; i++) { Application.DoEvents(); Thread.Sleep(20); }
+            Motion.StopAll();
+            Console.WriteLine("MOTION replace old=" + a + " new=" + b + " want=1/1 (旧补间只保留它自己的起始帧)");
+
+            Motion.Enabled = false;
+            bool instant = false;
+            Motion.To(new object(), 400, Ease.Linear, delegate(float t) { instant = t >= 1f; });
+            Console.WriteLine("MOTION disabled->instant=" + instant);
+            Console.WriteLine("MOTION systemAnimations=" + Motion.SystemAllowsAnimation());
+        }
+
+        // 图标族总览：同一套网格下逐个核对，避免"看着像但小尺寸糊成一团"
+        static void IconSheet(string dir)
+        {
+            Array vals = Enum.GetValues(typeof(Glyph));
+            int cols = 8, cell = 64;
+            int rows = (vals.Length + cols - 1) / cols;
+            int w = cols * cell, h = rows * cell * 2 + 8;
+            using (var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb))
+            using (var g = Graphics.FromImage(bmp))
+            {
+                Theme.SetDark(false);
+                for (int i = 0; i < vals.Length; i++)
+                {
+                    Glyph k = (Glyph)vals.GetValue(i);
+                    int c = i % cols, r = i / cols;
+                    var lightRect = new Rectangle(c * cell, r * cell * 2, cell, cell * 2);
+                    g.DrawRectangle(Pens.Gainsboro, lightRect);
+                    var box = new RectangleF(c * cell + 14, r * cell * 2 + 10, cell - 28, cell - 28);
+                    Icons.Draw(g, k, box, Color.FromArgb(255, 40, 40, 46));
+                    var small = new RectangleF(c * cell + 26, r * cell * 2 + cell + 4, 20, 20);
+                    Icons.Draw(g, k, small, Color.FromArgb(255, 40, 40, 46));
+                }
+                bmp.Save(Path.Combine(dir, "icons_light.png"), ImageFormat.Png);
+
+                using (var g2 = Graphics.FromImage(bmp))
+                {
+                    Theme.SetDark(true);
+                    g2.Clear(Color.FromArgb(255, 30, 30, 32));
+                    for (int i = 0; i < vals.Length; i++)
+                    {
+                        Glyph k = (Glyph)vals.GetValue(i);
+                        int c = i % cols, r = i / cols;
+                        var box = new RectangleF(c * cell + 14, r * cell * 2 + 10, cell - 28, cell - 28);
+                        Icons.Draw(g2, k, box, Color.FromArgb(255, 235, 235, 240));
+                        var small = new RectangleF(c * cell + 26, r * cell * 2 + cell + 4, 20, 20);
+                        Icons.Draw(g2, k, small, Color.FromArgb(255, 235, 235, 240));
+                    }
+                }
+                bmp.Save(Path.Combine(dir, "icons_dark.png"), ImageFormat.Png);
+                Theme.SetDark(false);
+                Console.WriteLine("ICONS sheet glyphs=" + vals.Length);
+            }
+        }
+
+        // 托盘菜单：只建句柄不 Show，绘制进位图核对配色/图标/间距
+        static void MenuShot(string dir)
+        {
+            try
+            {
+                foreach (string mode in new[] { "light", "dark" })
+                {
+                    Theme.SetDark(mode == "dark");
+                    var m = new MacMenu();
+                    m.AddItem("显示主界面", Glyph.Window, null);
+                    m.AddSep();
+                    m.AddItem("继续播放", Glyph.Play, null);
+                    m.AddItem("下一首", Glyph.Next, null);
+                    m.AddSep();
+                    m.AddItem("选择图片背景", Glyph.Picture, null);
+                    m.AddItem("选择视频背景", Glyph.Film, null);
+                    var off = m.AddItem("关闭桌面背景", Glyph.Close, null);
+                    off.Enabled = false;
+                    m.AddSep();
+                    m.AddItem("取消置顶「std.cpp - Sublime Text」", Glyph.PinSlash, null);
+                    m.AddItem("全部取消置顶（7 个）", Glyph.PinSlash, null);
+                    m.AddSep();
+                    var dm = m.AddItem("深色模式", Glyph.Moon, null); dm.Flag = mode == "dark";
+                    var ar = m.AddItem("开机自动运行", Glyph.Bolt, null); ar.Flag = true;
+                    m.AddSep();
+                    m.AddItem("退出", Glyph.Power, MacTone.Danger, null);
+
+                    // 强制一条进入悬停态：Select() 不会触发 MouseEnter，只能直接推 fade 值
+                    int pick = mode == "dark" ? m.Items.Count - 1 : 9;
+                    m.CreateControl();
+                    m.PerformLayout();
+                    var picked = m.Items[pick];
+                    var ff = picked.GetType().GetField("fade", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (ff != null)
+                    {
+                        var hv = ff.GetValue(picked);
+                        hv.GetType().GetField("Value").SetValue(hv, 1f);
+                        picked.Invalidate();
+                    }
+                    else Console.WriteLine("MENU 找不到 fade 字段，悬停胶囊未验证");
+                    for (int i = 0; i < 10; i++) { Application.DoEvents(); Thread.Sleep(20); }
+                    int w = m.Width, h = m.Height;
+                    if (w < 40 || h < 40) { Console.WriteLine("MENU size=" + w + "x" + h + " (太小，跳过)"); return; }
+                    var dbg = new System.Text.StringBuilder();
+                    foreach (ToolStripItem it in m.Items)
+                        dbg.Append(it.GetType().Name[8] + ":" + it.Bounds.X + "," + it.Bounds.Y + " " + it.Bounds.Width + "x" + it.Bounds.Height + "  ");
+                    Console.WriteLine("MENU bounds " + dbg);
+                    using (var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb))
+                    {
+                        m.DrawToBitmap(bmp, new Rectangle(0, 0, w, h));
+                        bmp.Save(Path.Combine(dir, "menu_" + mode + ".png"), ImageFormat.Png);
+                        Console.WriteLine("MENU " + mode + " " + w + "x" + h + " items=" + m.Items.Count);
+                    }
+                    m.Dispose();
+                }
+                Theme.SetDark(false);
+            }
+            catch (Exception ex) { Console.WriteLine("MENU FAIL " + ex.GetType().Name + ": " + ex.Message); }
         }
 
         // 纯逻辑自检：歌词解析与二分定位

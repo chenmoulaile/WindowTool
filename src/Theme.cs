@@ -171,17 +171,27 @@ namespace WindowTool
 
         public static GraphicsPath RoundRect(Rectangle r, int radius)
         {
+            return RoundRectF(r.X, r.Y, r.Width, r.Height, radius);
+        }
+
+        /// float 版圆角路径：矢量图标与渐变块需要亚像素定位，取整会让小尺寸图标变形。
+        public static GraphicsPath RoundRectF(RectangleF r, float radius)
+        {
+            return RoundRectF(r.X, r.Y, r.Width, r.Height, radius);
+        }
+
+        static GraphicsPath RoundRectF(float x, float y, float w, float h, float radius)
+        {
             var p = new GraphicsPath();
-            int rad = radius;
-            int max = Math.Max(0, Math.Min(r.Width, r.Height) / 2);
+            float rad = radius;
+            float max = Math.Max(0f, Math.Min(w, h) / 2f);
             if (rad > max) rad = max;
-            if (rad < 1 || r.Width < 2 || r.Height < 2)
+            if (rad < 1f || w < 2f || h < 2f)
             {
-                p.AddRectangle(r);
+                p.AddRectangle(new RectangleF(x, y, w, h));
                 return p;
             }
             float d = rad * 2f;
-            float x = r.X, y = r.Y, w = r.Width, h = r.Height;
             p.AddArc(x, y, d, d, 180, 90);
             p.AddArc(x + w - d, y, d, d, 270, 90);
             p.AddArc(x + w - d, y + h - d, d, d, 0, 90);
@@ -190,15 +200,35 @@ namespace WindowTool
             return p;
         }
 
+        /// 上亮下暗的渐变填充：图标块靠它获得 iOS 式的一点厚度。
+        public static void FillGradient(Graphics g, GraphicsPath path, RectangleF r, Color top, Color bottom)
+        {
+            using (var b = new LinearGradientBrush(
+                new RectangleF(r.X, r.Y, Math.Max(1f, r.Width), Math.Max(1f, r.Height)), top, bottom, 90f))
+                g.FillPath(b, path);
+        }
+
+        public static Color Lighten(Color c, float t) { return Blend(c, Color.White, t); }
+        public static Color Darken(Color c, float t) { return Blend(c, Color.Black, t); }
+
         // 只有左上/右上（或左下/右下）圆角的路径，用于卡片分组的首/尾行
         public static GraphicsPath RoundRectSides(Rectangle r, int radius, bool top, bool bottom)
         {
+            return RoundRectSidesF(r.X, r.Y, r.Width, r.Height, radius, top, bottom);
+        }
+
+        public static GraphicsPath RoundRectSidesF(RectangleF r, float radius, bool top, bool bottom)
+        {
+            return RoundRectSidesF(r.X, r.Y, r.Width, r.Height, radius, top, bottom);
+        }
+
+        static GraphicsPath RoundRectSidesF(float x, float y, float w, float h, float radius, bool top, bool bottom)
+        {
             var p = new GraphicsPath();
-            int rad = Math.Min(radius, Math.Min(r.Width / 2, r.Height / 2));
-            if (rad < 1) { p.AddRectangle(r); return p; }
+            float rad = Math.Min(radius, Math.Min(w / 2f, h / 2f));
+            if (rad < 1f) { p.AddRectangle(new RectangleF(x, y, w, h)); return p; }
             float d = rad * 2f;
-            float x = r.X, y = r.Y, w = r.Width, h = r.Height;
-            if (top && bottom) return RoundRect(r, radius);
+            if (top && bottom) return RoundRectF(x, y, w, h, radius);
             if (top)
             {
                 p.AddArc(x, y, d, d, 180, 90);

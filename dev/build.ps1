@@ -13,7 +13,8 @@ $refs = @(
   "-r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Xaml.dll"
 )
 $common = @("-nologo","-codepage:65001","-target:winexe","-platform:anycpu","-optimize+",
-            "-win32icon:app.ico","-win32manifest:app.manifest")
+            "-win32icon:app.ico","-win32manifest:app.manifest",
+            "-resource:app.ico,WindowTool.tray.ico")
 $out = if ($args[0]) { $args[0] } else { "build\WindowTool.exe" }
 $all = $common + $refs + @("-out:$out") + $src
 & $csc $all 2>&1 | Out-String -Width 400 | Write-Output

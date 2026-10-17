@@ -383,6 +383,15 @@ namespace WindowTool
             }
             if (Native.IsIconic(h)) Native.ShowWindow(h, Native.SW_RESTORE);
 
+            var target = SnapRect(kind, wa, s.HasPrev ? s.PrevRect : System.Drawing.Rectangle.Empty, s.HasPrev);
+            return Native.SetWindowPos(h, IntPtr.Zero, target.X, target.Y, target.Width, target.Height,
+                Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+        }
+
+        /// 纯几何：把某个工作区按吸附类型切出一块。不碰任何窗口，方便离线核对。
+        public static System.Drawing.Rectangle SnapRect(SnapKind kind, System.Drawing.Rectangle wa,
+            System.Drawing.Rectangle prev, bool hasPrev)
+        {
             int halfW = wa.Width / 2, halfH = wa.Height / 2;
             int x = wa.X, y = wa.Y, w = wa.Width, hh = wa.Height;
             switch (kind)
@@ -399,17 +408,16 @@ namespace WindowTool
                     w = wa.Width - halfW; hh = wa.Height - halfH; break;
                 case SnapKind.Max: break;
                 case SnapKind.Center:
-                    {
-                        int cw = Math.Min(s.HasPrev ? s.PrevRect.Width : wa.Width / 2, wa.Width);
-                        int ch = Math.Min(s.HasPrev ? s.PrevRect.Height : wa.Height / 2, wa.Height);
-                        x = wa.X + (wa.Width - cw) / 2;
-                        y = wa.Y + (wa.Height - ch) / 2;
-                        w = cw; hh = ch;
-                        break;
-                    }
+                {
+                    int cw = Math.Min(hasPrev && prev.Width > 0 ? prev.Width : wa.Width / 2, wa.Width);
+                    int ch = Math.Min(hasPrev && prev.Height > 0 ? prev.Height : wa.Height / 2, wa.Height);
+                    x = wa.X + (wa.Width - cw) / 2;
+                    y = wa.Y + (wa.Height - ch) / 2;
+                    w = cw; hh = ch;
+                    break;
+                }
             }
-            return Native.SetWindowPos(h, IntPtr.Zero, x, y, w, hh,
-                Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
+            return System.Drawing.Rectangle.FromLTRB(x, y, x + w, y + hh);
         }
 
         /// 回到第一次吸附前的矩形。没有记录时返回 false。

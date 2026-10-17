@@ -42,7 +42,7 @@ namespace WindowTool
         public Settings Cfg { get { return cfg; } }
 
         NotifyIcon tray;
-        ContextMenuStrip trayMenu;
+        MacMenu trayMenu;
         bool startupHidden, reallyExit, balloonShown, loading;
 
         Timer tmr, tmrBg, tmrAuto, trimT;
@@ -107,6 +107,8 @@ namespace WindowTool
             Theme.SetDark(ResolveDark());
             Theme.SetHue((AccentHue)Math.Max(0, Math.Min(6, cfg.Int("hue", 0))));
             Theme.Radius = cfg.Int("radius", 10);
+            // 动画默认跟随 Windows 的"显示动画"设置，用户可在通用页单独关掉
+            Motion.Enabled = cfg.Int("motion", Motion.SystemAllowsAnimation() ? 1 : 0) != 0;
         }
 
         public bool ResolveDark()
@@ -194,10 +196,18 @@ namespace WindowTool
         void Register(Page p)
         {
             pages[p.Key] = p;
-            p.Dock = DockStyle.Fill;
+            p.Dock = DockStyle.None;
             pageHost.Controls.Add(p);
             p.Build();
             p.Visible = false;
+            p.SlideChanged = delegate { Invalidate(); };
+            p.Place(PageRect());
+        }
+
+        Rectangle PageRect()
+        {
+            if (pageHost == null) return new Rectangle(0, 0, Theme.S(640), Theme.S(520));
+            return pageHost.ClientRectangle;
         }
 
         Size PageArea()
@@ -219,6 +229,8 @@ namespace WindowTool
 
             if (mini != null) mini.SetBounds(sbW, ClientSize.Height - miniH, ClientSize.Width - sbW, miniH);
 
+            foreach (var kv in pages) kv.Value.Place(PageRect());
+
             toast.BringToFront();
             toast.Location = new Point(pageHost.Left + (pageHost.Width - toast.Width) / 2, 0);
 
@@ -234,9 +246,10 @@ namespace WindowTool
         protected override void OnChromePaint(Graphics g)
         {
             if (current == null) return;
-            int x = Theme.S(230) + Theme.S(22);
+            int x = Theme.S(230) + Theme.S(22) + current.SlideDx;
             MacUi.LeftText(g, current.Title, Theme.FontTitle,
                 new RectangleF(x, Theme.S(11), ClientSize.Width - x - Theme.S(24), Theme.S(24)), Theme.Text);
+
         }
 
         internal void SelectPage(string key, bool force)
@@ -244,16 +257,19 @@ namespace WindowTool
             Page p;
             if (!pages.TryGetValue(key, out p)) { key = "window"; p = pages["window"]; }
             if (current == p && !force) return;
+            int prev = sidebar == null ? 0 : sidebar.SelectedIndex;
             if (current != null) current.OnHide();
             current = p;
             currentPageKey = key;
             foreach (var kv in pages) kv.Value.Visible = kv.Value == p;
             int idx = 0;
             for (int i = 0; i < sidebar.Items.Count; i++) if (sidebar.Items[i].Key == key) idx = i;
-            if (sidebar.SelectedIndex != idx) sidebar.SelectedIndex = idx;
+            if (force) sidebar.SetSelectedSilent(idx);
+            else if (sidebar.SelectedIndex != idx) sidebar.SelectedIndex = idx;
             LayoutShell();
             p.OnShow();
             p.Tick();          // 立刻回填内容，不等 500ms 定时器
+            if (!force) p.SlideIn(idx >= prev ? 1 : -1);
             if (!loading) Save();
             Invalidate();
         }
@@ -623,12 +639,12 @@ namespace WindowTool
 
         void BuildTray()
         {
-            trayMenu = new ContextMenuStrip();
+            trayMenu = new MacMenu();
+            trayMenu.OnRefresh = RebuildTrayMenu;
             RebuildTrayMenu();
 
             tray = new NotifyIcon();
-            try { tray.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
-            catch { tray.Icon = SystemIcons.Application; }
+            tray.Icon = AppIcon();
             tray.Text = "OI 工具箱";
             tray.ContextMenuStrip = trayMenu;
             tray.Visible = !DesignRender;
@@ -636,39 +652,120 @@ namespace WindowTool
             tray.DoubleClick += (s, e) => ShowMain();
         }
 
+        /// 按当前 DPI 的托盘尺寸取图标里最接近的一帧，避免系统把 256 帧硬缩成糊的。
+        /// 只能从内嵌资源流里取：new Icon(exe 路径, w, h) 解析不出 csc 写进去的组图标。
+        static Icon AppIcon()
+        {
+            int px = Math.Max(16, Theme.S(16));
+            if (px > 128) px = 128;     // GDI+ 读不到 256 帧（ICO 里用 0 表示）
+            try
+            {
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                using (var st = asm.GetManifestResourceStream("WindowTool.tray.ico"))
+                    if (st != null) return new Icon(st, px, px);
+            }
+            catch (Exception ex) { Program.Log(ex); }
+            try { return Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+            return SystemIcons.Application;
+        }
+
         void RebuildTrayMenu()
         {
-            trayMenu.Items.Clear();
-            trayMenu.Items.Add("显示主界面", null, (s, e) => ShowMain());
-            trayMenu.Items.Add(new ToolStripSeparator());
-            trayMenu.Items.Add("选择图片背景", null, (s, e) => TrayApplyBg(true));
-            trayMenu.Items.Add("选择视频背景", null, (s, e) => TrayApplyBg(false));
-            trayMenu.Items.Add("取消背景", null, (s, e) => TrayBgOff());
-            trayMenu.Items.Add(new ToolStripSeparator());
+            var m = trayMenu;
+            m.Items.Clear();
+
+            m.AddItem("显示主界面", Glyph.Window, (s, e) => ShowMain());
+
+            if (music != null && music.HasSong)
+            {
+                m.AddSep();
+                m.AddItem(music.Playing ? "暂停播放" : "继续播放", music.Playing ? Glyph.Pause : Glyph.Play,
+                    (s, e) => music.Toggle());
+                m.AddItem("下一首", Glyph.Next, (s, e) => music.Next(true));
+            }
+
+            m.AddSep();
+            m.AddItem("选择图片背景", Glyph.Picture, (s, e) => TrayApplyBg(true));
+            m.AddItem("选择视频背景", Glyph.Film, (s, e) => TrayApplyBg(false));
+            var off = m.AddItem("关闭桌面背景", Glyph.Close, (s, e) => TrayBgOff());
+            off.Enabled = bgForms.Count > 0;
 
             var pinned = Manager.PinnedSnapshot();
             if (pinned.Length > 0)
             {
-                foreach (var h in pinned)
+                m.AddSep();
+                int shown = Math.Min(pinned.Length, 5);
+                for (int i = 0; i < shown; i++)
                 {
-                    IntPtr hh = h;
-                    string t = TitleOf(hh);
-                    trayMenu.Items.Add("取消「" + Theme.Ellipsis(t, Theme.FontUi, Theme.S(200)) + "」",
-                        null, (s, e) => { Manager.CancelOp2(hh); Toast("已还原一个置顶窗口。", ToastKind.Good); });
+                    IntPtr hh = pinned[i];
+                    string t = Theme.Ellipsis(TitleOf(hh), Theme.FontUi, Theme.S(210));
+                    m.AddItem("取消置顶「" + t + "」", Glyph.PinSlash,
+                        (s, e) => { Manager.CancelOp2(hh); Toast("已还原一个置顶窗口。", ToastKind.Good); });
                 }
-                trayMenu.Items.Add(new ToolStripSeparator());
+                if (pinned.Length > shown)
+                {
+                    m.AddItem("全部取消置顶（" + pinned.Length + " 个）", Glyph.PinSlash,
+                        (s, e) =>
+                        {
+                            int n = Manager.CancelAll();
+                            Toast("已还原 " + n + " 个置顶窗口。", ToastKind.Good);
+                        });
+                }
             }
 
-            if (music != null && music.HasSong)
+            m.AddSep();
+            bool dark = Theme.IsDark;
+            int mode = cfg.Int("darkMode", dark ? 1 : 0);
+            if (mode == 2) dark = SystemLightsDark();
+            var dm = m.AddItem("深色模式", Glyph.Moon, (s, e) => SetTrayDark(!Theme.IsDark));
+            dm.Flag = dark;
+            var ar = m.AddItem("开机自动运行", Glyph.Bolt, (s, e) => ToggleAutoRun());
+            ar.Flag = AutoRunOn();
+
+            m.AddSep();
+            m.AddItem("退出", Glyph.Power, MacTone.Danger, (s, e) => { reallyExit = true; Close(); });
+        }
+
+        void SetTrayDark(bool on)
+        {
+            cfg.Set("darkMode", on ? 1 : 0);
+            cfg.Set("dark", on);
+            ApplyTheme();
+            Save();
+        }
+
+        public bool AutoRunOn()
+        {
+            try
             {
-                trayMenu.Items.Add(music.Playing ? "暂停" : "播放", null, (s, e) => music.Toggle());
-                trayMenu.Items.Add("下一首", null, (s, e) => music.Next(true));
-                trayMenu.Items.Add(new ToolStripSeparator());
+                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Run", false))
+                    return k != null && k.GetValue("WindowTool") != null;
             }
+            catch { }
+            return false;
+        }
 
-            var exit = new ToolStripMenuItem("退出");
-            exit.Click += (s, e) => { reallyExit = true; Close(); };
-            trayMenu.Items.Add(exit);
+        public void ToggleAutoRun()
+        {
+            SetAutoRun(!AutoRunOn(), true);
+        }
+
+        /// 通用页与托盘菜单共用：on 为 false 时删除 Run 项。
+        public void SetAutoRun(bool on, bool notify)
+        {
+            try
+            {
+                using (var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Run"))
+                {
+                    if (k == null) { ToastBad("无法打开注册表启动项。"); return; }
+                    if (on) k.SetValue("WindowTool", "\"" + Application.ExecutablePath + "\"");
+                    else k.DeleteValue("WindowTool", false);
+                }
+                if (notify) ToastGood(on ? "已开启开机自动运行。" : "已关闭开机自动运行。");
+            }
+            catch (Exception ex) { Program.Log(ex); ToastBad("设置失败：" + ex.Message); }
         }
 
         static string TitleOf(IntPtr h)

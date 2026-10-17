@@ -1,0 +1,318 @@
+using System;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Windows.Forms;
+
+namespace WindowTool
+{
+    /// macOS 风格托盘菜单：圆角面板、整条强调色悬停胶囊、矢量图标、逐条错峰滑入。
+    /// 条目走 OwnerDraw——ToolStrip 只在 item.Image 非空时才回调 RenderItemImage，
+    /// 靠渲染器画图标会静默失效，自己接管 Paint 才有确定的绘制路径。
+    sealed class MacMenu : ContextMenuStrip
+    {
+        readonly object revealTag = new object();
+        float reveal = 1f;
+
+        /// 打开前回调：置顶列表、播放态随时变化，条目必须按当前状态重建。
+        public Action OnRefresh;
+
+        public MacMenu() : base()
+        {
+            // 只赋 Renderer：它的 setter 会顺带把 RenderMode 切成 Custom。
+            // 反过来先写 RenderMode=Custom 会抛 NotSupportedException，
+            // 而写 RenderMode=Professional 则把自绘渲染器换回内置实例、静默失效。
+            Renderer = new MacMenuRenderer();
+            Font = Theme.FontUi;
+            BackColor = Surface();
+            ForeColor = Theme.Text;
+        }
+
+        public static Color Surface()
+        {
+            return Theme.IsDark ? Color.FromArgb(46, 46, 51) : Color.FromArgb(251, 251, 253);
+        }
+
+        public int Pad { get { return Theme.S(6); } }
+        public int RowH { get { return Theme.S(30); } }
+        public int Gutter { get { return Theme.S(26); } }
+
+        /// 分隔线条目的宽度：与最宽条目对齐，靠 Layout 阶段回填。
+        public int LineWidth
+        {
+            get
+            {
+                int w = Theme.S(120);
+                foreach (ToolStripItem it in Items)
+                {
+                    var m = it as MacMenuItem;
+                    if (m != null && !m.Line && m.Width > w) w = m.Width;
+                }
+                return w + Pad * 2;
+            }
+        }
+
+        /// 每加一条都全量重排：分隔线的宽度要跟着最宽条目走，
+        /// 只在新建时算一次会让后面的条目把它撑窄。
+        void RelayoutAll()
+        {
+            foreach (ToolStripItem it in Items)
+            {
+                var m = it as MacMenuItem;
+                if (m != null) m.Relayout();
+            }
+        }
+
+        /// 0→1 的展开进度，条目按序号错峰滑入。
+        public float Reveal { get { return reveal; } }
+
+        public MacMenuItem AddItem(string text, Glyph icon, EventHandler onClick)
+        {
+            return AddItem(text, icon, MacTone.Normal, onClick);
+        }
+
+        public MacMenuItem AddItem(string text, Glyph icon, MacTone tone, EventHandler onClick)
+        {
+            var it = new MacMenuItem(this, text, icon, tone, onClick);
+            Items.Add(it);
+            RelayoutAll();
+            return it;
+        }
+
+        /// 分隔线用自绘条目而不是 ToolStripSeparator：后者的默认绘制会在
+        /// 左侧图标槽留下两段亮线，怎么覆盖都盖不住。
+        public MacMenuItem AddSep()
+        {
+            var s = new MacMenuItem(this, "", Glyph.Close, MacTone.Normal, null);
+            s.Line = true;
+            s.Enabled = false;
+            Items.Add(s);
+            RelayoutAll();
+            return s;
+        }
+
+        public int LocalOffset(ToolStripItem item)
+        {
+            if (reveal >= 1f) return 0;
+            int idx = Items.IndexOf(item);
+            if (idx < 0) idx = 0;
+            float local = (reveal - idx * 0.07f) / 0.55f;
+            if (local < 0f) local = 0f;
+            if (local > 1f) local = 1f;
+            local = Motion.Curve(Ease.Out, local);
+            return (int)Math.Round((1f - local) * Theme.S(10));
+        }
+
+        protected override void OnOpening(System.ComponentModel.CancelEventArgs e)
+        {
+            if (OnRefresh != null) { try { OnRefresh(); } catch (Exception ex) { Program.Log(ex); } }
+            Font = Theme.FontUi;
+            BackColor = Surface();
+            ForeColor = Theme.Text;
+            Padding = new Padding(Pad, Pad, Pad + Theme.S(6), Pad);
+            RelayoutAll();
+            base.OnOpening(e);
+            ApplyShape();
+            if (Motion.Enabled)
+            {
+                reveal = 0f;
+                Motion.To(revealTag, 200, Ease.Out, delegate(float t)
+                {
+                    reveal = t;
+                    Invalidate();
+                });
+            }
+            else reveal = 1f;
+        }
+
+        protected override void OnClosed(ToolStripDropDownClosedEventArgs e)
+        {
+            Motion.Cancel(revealTag);
+            reveal = 1f;
+            base.OnClosed(e);
+        }
+
+        /// 圆角靠窗口 Region 裁出来：菜单是独立 HWND，不能像普通控件那样画透明角。
+        void ApplyShape()
+        {
+            try
+            {
+                int w = Width, h = Height;
+                if (w < 8 || h < 8) return;
+                int rad = Theme.S(11);
+                Region old = Region;
+                using (var p = Theme.RoundRect(new Rectangle(0, 0, w, h), rad))
+                    Region = new Region(p);
+                if (old != null) old.Dispose();
+            }
+            catch (Exception ex) { Program.Log(ex); }
+        }
+
+        protected override void OnSizeChanged(EventArgs e)
+        {
+            base.OnSizeChanged(e);
+            if (Visible) ApplyShape();
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var cp = base.CreateParams;
+                cp.ClassStyle |= 0x00020000;   // CS_DROPSHADOW：跟随 Region 的圆角投影
+                return cp;
+            }
+        }
+    }
+
+    /// 单条菜单项：自己画悬停胶囊、图标、文字与勾选。
+    sealed class MacMenuItem : ToolStripMenuItem
+    {
+        readonly MacMenu menu;
+        readonly HoverFade fade;
+        public Glyph Icon = Glyph.ChevronR;
+        public MacTone Tone = MacTone.Normal;
+        public bool Flag;
+        public bool Line;
+
+        public MacMenuItem(MacMenu menu, string text, Glyph icon, MacTone tone, EventHandler onClick)
+            : base(text)
+        {
+            this.menu = menu;
+            Icon = icon;
+            Tone = tone;
+            AutoToolTip = false;
+            AutoSize = false;
+            Height = menu.RowH;
+            Margin = new Padding(0);
+            DisplayStyle = ToolStripItemDisplayStyle.None;   // 文字与图标全部自己画
+            fade = new HoverFade(delegate { if (!IsDisposed) Invalidate(); });
+            if (onClick != null) Click += onClick;
+            // ToolStripItem 没有虚 OnSelected / SelectedChanged，只能挂鼠标事件
+            MouseEnter += delegate { fade.To(1f, 110); };
+            MouseLeave += delegate { fade.To(0f, 150); };
+            Relayout();
+        }
+
+        /// 宽度按文字实测：中文条目交给 AutoSize 会算窄，图标槽也得留出来。
+        public void Relayout()
+        {
+            if (Line) { Height = Theme.S(11); Width = menu.LineWidth; return; }
+            Height = menu.RowH;
+            int tw = TextRenderer.MeasureText(Text ?? "", menu.Font, Size.Empty,
+                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
+            Width = menu.Gutter + tw + Theme.S(22);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            Theme.Hint(g);
+            // 不要 Clear：面板顶部的渐隐柔光是宿主画的，条目一擦就断成一块块矩形
+            if (Line)
+            {
+                using (var pen = new Pen(Theme.Separator, Math.Max(1f, Theme.S(1))))
+                    g.DrawLine(pen, Theme.S(12), Height / 2, Math.Max(Theme.S(12), Width - Theme.S(10)), Height / 2);
+                return;
+            }
+
+            int off = menu.LocalOffset(this);
+            float a = fade.Value;
+            if (a > 0.01f)
+            {
+                var pill = new RectangleF(off, (Height - Theme.S(24)) / 2f,
+                    Width - off - Theme.S(3), Theme.S(24));
+                Color basePill = Tone == MacTone.Danger ? Theme.Red : Theme.Accent;
+                Color c = Theme.Blend(Theme.Hover, basePill, a);
+                if (!Enabled) c = Theme.Alpha(Theme.Hover, (int)(160 * a));
+                using (var p = Theme.RoundRectF(pill, Theme.S(7)))
+                {
+                    Theme.FillPath(g, p, c);
+                    if (a > 0.5f)
+                        Theme.StrokePath(g, p, Theme.Alpha(Color.Black, (int)(22 * a)), Math.Max(1f, Theme.S(1)));
+                }
+            }
+
+            Color glyph = !Enabled ? Theme.TextFaint : Theme.TextDim;
+            Color text = !Enabled ? Theme.TextFaint : Theme.Text;
+            if (a > 0.01f)
+            {
+                Color on = Enabled ? Color.White : Theme.TextFaint;
+                glyph = Theme.Blend(glyph, on, a);
+                text = Theme.Blend(text, on, a);
+            }
+
+            int d = Theme.S(16);
+            var box = new RectangleF(Theme.S(5) + off, (Height - d) / 2f, d, d);
+            Icons.Draw(g, Icon, box, glyph);
+
+            TextRenderer.DrawText(g, Text ?? "", menu.Font,
+                new Rectangle(menu.Gutter + off, 0, Math.Max(Theme.S(8), Width - menu.Gutter - off), Height), text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+
+            if (Flag)
+            {
+                int cd = Theme.S(14);
+                Icons.Draw(g, Glyph.Check,
+                    new RectangleF(Width - cd - Theme.S(12) + off, (Height - cd) / 2f, cd, cd),
+                    Enabled ? (a > 0.5f ? Color.White : Theme.Accent) : Theme.TextFaint);
+            }
+        }
+    }
+
+    /// 面板底、分隔线与子菜单箭头。条目本身由 MacMenuItem 自绘。
+    sealed class MacMenuRenderer : ToolStripProfessionalRenderer
+    {
+        public MacMenuRenderer() { RoundedEdges = false; }
+
+        protected override void OnRenderToolStripBackground(ToolStripRenderEventArgs e)
+        {
+            var menu = e.ToolStrip as MacMenu;
+            var g = e.Graphics;
+            if (menu == null) { base.OnRenderToolStripBackground(e); return; }
+            Theme.Hint(g);
+            g.Clear(MacMenu.Surface());
+            var r = new Rectangle(0, 0, menu.Width - 1, menu.Height - 1);
+            int rad = Theme.S(11);
+            // 顶部柔光必须一路渐隐到底：用半高的实心块会在条目没铺满的右侧留一条硬边
+            using (var p = Theme.RoundRect(r, rad))
+            {
+                var rf = new RectangleF(0, 0, menu.Width, menu.Height);
+                using (var glow = new LinearGradientBrush(rf,
+                    Theme.Alpha(Color.White, Theme.IsDark ? 14 : 70),
+                    Theme.Alpha(Color.White, 0), 90f))
+                {
+                    g.SetClip(p);
+                    g.FillRectangle(glow, 0, 0, menu.Width, menu.Height);
+                    g.ResetClip();
+                }
+                // 描边固定 1 物理像素：按 DPI 放大到 2px 会让左边缘看起来像一排小方块
+                Theme.StrokePath(g, p, Theme.Alpha(Theme.Text, Theme.IsDark ? 52 : 38), 1f);
+            }
+        }
+
+        /// 条目自绘，这里必须让路：否则文字会被画两遍，看起来像加粗。
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            if (e.Item is MacMenuItem) return;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            if (e.Item is MacMenuItem) return;
+            base.OnRenderItemBackground(e);
+        }
+
+        protected override void OnRenderArrow(ToolStripArrowRenderEventArgs e)
+        {
+            var g = e.Graphics;
+            Theme.Hint(g);
+            int d = Theme.S(9);
+            var box = new RectangleF(e.ArrowRectangle.X + e.ArrowRectangle.Width - d - Theme.S(4),
+                e.ArrowRectangle.Y + (e.ArrowRectangle.Height - d) / 2f, d, d);
+            Icons.Draw(g, Glyph.ChevronR, box,
+                e.Item.Selected && e.Item.Enabled ? Color.White : Theme.TextDim);
+        }
+    }
+}

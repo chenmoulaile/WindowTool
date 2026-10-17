@@ -12,8 +12,10 @@ $refs = @(
   "-r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\WindowsFormsIntegration.dll",
   "-r:C:\Windows\Microsoft.NET\Framework64\v4.0.30319\System.Xaml.dll"
 )
+$res = @()
+if (Test-Path "app.ico") { $res = @("-resource:app.ico,WindowTool.tray.ico") }
 $all = @("-nologo","-codepage:65001","-target:exe","-platform:anycpu","-optimize+",
-         "-main:WindowTool.RenderHarness","-win32manifest:app.manifest") + $refs + @("-out:build\render.exe") + $src
+         "-main:WindowTool.RenderHarness","-win32manifest:app.manifest") + $res + $refs + @("-out:build\render.exe") + $src
 & $csc $all > build\render.log 2>&1
 if ($LASTEXITCODE -ne 0) { Write-Output "HARNESS BUILD FAILED"; Get-Content build\render.log; exit 1 }
 cmd /c "build\render.exe build\shots > build\shots.log 2>&1"

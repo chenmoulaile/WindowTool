@@ -50,7 +50,9 @@ namespace WindowTool
 
     sealed class MacButton : Button, IThemed
     {
-        bool hover, down;
+        readonly HoverFade hov;
+        readonly object pressTag = new object();
+        float press;
         public MacTone Tone = MacTone.Normal;
         public Glyph Icon = Glyph.Pin;
         public bool ShowIcon;
@@ -67,14 +69,27 @@ namespace WindowTool
             Cursor = Cursors.Hand;
             Font = Theme.FontUi;
             Height = Theme.S(28);
+            hov = new HoverFade(this);
         }
 
         public void ApplyTheme() { Font = Theme.FontUi; Height = Theme.S(28); Invalidate(); }
 
-        protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
-        protected override void OnMouseLeave(EventArgs e) { hover = false; down = false; Invalidate(); base.OnMouseLeave(e); }
-        protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) { down = true; Invalidate(); } base.OnMouseDown(e); }
-        protected override void OnMouseUp(MouseEventArgs e) { down = false; Invalidate(); base.OnMouseUp(e); }
+        protected override void OnMouseEnter(EventArgs e) { hov.To(1f, 120); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hov.To(0f, 170); SetPress(0f); base.OnMouseLeave(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) SetPress(1f); base.OnMouseDown(e); }
+        protected override void OnMouseUp(MouseEventArgs e) { SetPress(0f); base.OnMouseUp(e); }
+
+        /// 按下用补间而不是布尔：松开时要有约 150ms 的回弹，否则像被剪贴板贴上去的。
+        void SetPress(float target)
+        {
+            float from = press;
+            if (Math.Abs(target - from) < 0.01f) return;
+            Motion.To(pressTag, target > from ? 90 : 160, Ease.Out, delegate(float t)
+            {
+                press = from + (target - from) * t;
+                if (!IsDisposed) Invalidate();
+            });
+        }
         protected override void OnEnabledChanged(EventArgs e) { Invalidate(); base.OnEnabledChanged(e); }
 
         void Palette(out Color fill, out Color text, out Color border)
@@ -88,16 +103,19 @@ namespace WindowTool
                 case MacTone.Ghost: fill = Color.Transparent; text = Theme.Accent; border = Color.Transparent; break;
                 case MacTone.Sunken: fill = Theme.CardSunken; text = Theme.Text; border = Color.Transparent; break;
             }
-            if (hover && Enabled)
+            if (Enabled)
             {
-                if (Tone == MacTone.Ghost) fill = Theme.Alpha(Theme.Accent, Theme.IsDark ? 34 : 20);
-                else fill = Theme.PressedOf(fill);
-                if (Tone == MacTone.Normal) border = Theme.Blend(Theme.Border, Theme.Text, 0.25f);
-            }
-            if (down && Enabled)
-            {
-                if (Tone == MacTone.Ghost) fill = Theme.Alpha(Theme.Accent, Theme.IsDark ? 56 : 38);
-                else fill = Theme.PressedOf(fill);
+                float a = hov.Value;
+                if (a > 0.01f)
+                {
+                    Color hoverFill = Tone == MacTone.Ghost
+                        ? Theme.Alpha(Theme.Accent, Theme.IsDark ? 34 : 20)
+                        : Theme.PressedOf(fill);
+                    fill = Theme.Blend(fill, hoverFill, a);
+                    if (Tone == MacTone.Normal)
+                        border = Theme.Blend(border, Theme.Blend(Theme.Border, Theme.Text, 0.25f), a);
+                }
+                if (press > 0.01f) fill = Theme.Blend(fill, Theme.PressedOf(fill), press);
             }
             if (!Enabled)
             {
@@ -117,6 +135,8 @@ namespace WindowTool
 
             var r = new Rectangle(0, 0, Width - 1, Height - 1);
             if (Tone == MacTone.Normal || Tone == MacTone.Sunken) r.Inflate(-1, -1);
+            int sink = (int)Math.Round(press * Theme.S(1));
+            r.Y += sink;
             int rad = Theme.CornerRadius(r.Width, r.Height);
             using (var path = Theme.RoundRect(r, rad))
             {
@@ -240,6 +260,9 @@ namespace WindowTool
         readonly List<string> items = new List<string>();
         int sel = -1;
         int hoverIdx = -1;
+        float segPos;
+        readonly object segTag = new object();
+        readonly HoverFade hoverFade;
 
         public event EventHandler SelectedIndexChanged;
 
@@ -251,6 +274,7 @@ namespace WindowTool
             Cursor = Cursors.Hand;
             Height = Theme.S(26);
             Font = Theme.FontUi;
+            hoverFade = new HoverFade(this);
         }
 
         public string[] Items { get { return items.ToArray(); } }
@@ -293,6 +317,7 @@ namespace WindowTool
                 int v = value < -1 || value >= items.Count ? sel : value;
                 if (v == sel) return;
                 sel = v;
+                GlideSeg(v);
                 Invalidate();
                 var h = SelectedIndexChanged;
                 if (h != null) h(this, EventArgs.Empty);
@@ -303,6 +328,7 @@ namespace WindowTool
         {
             if (v < -1 || v >= items.Count || v == sel) return;
             sel = v;
+            segPos = v;
             Invalidate();
         }
 
@@ -316,6 +342,32 @@ namespace WindowTool
             return new RectangleF(pad + i * w, pad, w, Height - pad * 2);
         }
 
+        RectangleF CellAt(float pos)
+        {
+            int n = Math.Max(1, items.Count);
+            float pad = Theme.S(2);
+            float w = (Width - pad * 2) / (float)n;
+            return new RectangleF(pad + pos * w, pad, w, Height - pad * 2);
+        }
+
+        float CellWeight(int i)
+        {
+            float w = 1f - Math.Abs(segPos - i);
+            return w < 0f ? 0f : (w > 1f ? 1f : w);
+        }
+
+        /// 选中小节在相邻格子间滑行，和侧栏胶囊用同一套曲线。
+        void GlideSeg(int target)
+        {
+            float from = segPos;
+            if (Math.Abs(target - from) < 0.01f) { segPos = target; return; }
+            Motion.To(segTag, 240, Ease.Spring, delegate(float t)
+            {
+                segPos = from + (target - from) * t;
+                if (!IsDisposed) Invalidate();
+            });
+        }
+
         int Hit(Point p)
         {
             for (int i = 0; i < items.Count; i++) if (Cell(i).Contains(p)) return i;
@@ -325,11 +377,22 @@ namespace WindowTool
         protected override void OnMouseMove(MouseEventArgs e)
         {
             int h = Hit(e.Location);
-            if (h != hoverIdx) { hoverIdx = h; Invalidate(); }
+            if (h != hoverIdx)
+            {
+                hoverIdx = h;
+                hoverFade.To(h >= 0 && h != sel ? 1f : 0f, h >= 0 ? 130 : 160);
+                Invalidate();
+            }
             base.OnMouseMove(e);
         }
 
-        protected override void OnMouseLeave(EventArgs e) { hoverIdx = -1; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            hoverIdx = -1;
+            hoverFade.To(0f, 160);
+            Invalidate();
+            base.OnMouseLeave(e);
+        }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
@@ -362,28 +425,31 @@ namespace WindowTool
             }
             if (items.Count == 0) return;
 
+            // 悬停底先画，滑行中的选中小节压在上面
+            if (hoverIdx >= 0 && hoverIdx != sel && hoverFade.Value > 0.01f)
+            {
+                using (var p = Theme.RoundRect(Rectangle.Round(Cell(hoverIdx)), Theme.S(5)))
+                    Theme.FillPath(g, p, Theme.Alpha(Theme.Hover, (int)(255 * hoverFade.Value)));
+            }
+            var sr2 = new RectangleF(CellAt(segPos).X - Theme.S(1), CellAt(segPos).Y - Theme.S(1),
+                CellAt(segPos).Width + Theme.S(2), CellAt(segPos).Height + Theme.S(2));
+            if (items.Count > 0 && sel >= 0)
+            {
+                using (var sh = new SolidBrush(Color.FromArgb(30, 0, 0, 0)))
+                    g.FillPath(sh, Theme.RoundRect(new Rectangle((int)sr2.X, (int)sr2.Y + Theme.S(1),
+                        (int)sr2.Width, (int)sr2.Height), Theme.S(6)));
+                using (var p = Theme.RoundRect(Rectangle.Round(sr2), Theme.S(6)))
+                {
+                    Theme.FillPath(g, p, Theme.Card);
+                    Theme.StrokePath(g, p, Theme.Border, Math.Max(1f, Theme.S(1)));
+                }
+            }
+
             for (int i = 0; i < items.Count; i++)
             {
                 var c = Cell(i);
-                bool isSel = i == sel;
-                if (isSel)
-                {
-                    var sr = new RectangleF(c.X - Theme.S(1), c.Y - Theme.S(1), c.Width + Theme.S(2), c.Height + Theme.S(2));
-                    using (var p = Theme.RoundRect(Rectangle.Round(sr), Theme.S(6)))
-                    {
-                        using (var sh = new SolidBrush(Color.FromArgb(28, 0, 0, 0)))
-                            g.FillPath(sh, Theme.RoundRect(new Rectangle((int)sr.X, (int)sr.Y + Theme.S(1), (int)sr.Width, (int)sr.Height), Theme.S(6)));
-                        Theme.FillPath(g, p, Theme.Card);
-                        Theme.StrokePath(g, p, Theme.Border, Math.Max(1f, Theme.S(1)));
-                    }
-                }
-                else if (i == hoverIdx)
-                {
-                    using (var p = Theme.RoundRect(Rectangle.Round(c), Theme.S(5)))
-                        Theme.FillPath(g, p, Theme.Hover);
-                }
-
-                Color tc = isSel ? Theme.Text : Theme.TextDim;
+                float w = CellWeight(i);
+                Color tc = Theme.Blend(Theme.TextDim, Theme.Text, w);
                 string label = Theme.Ellipsis(items[i], Font, (int)c.Width - Theme.S(10));
                 MacUi.CenterText(g, label, Font, new RectangleF(c.X, c.Y - Theme.S(1), c.Width, c.Height), tc);
             }

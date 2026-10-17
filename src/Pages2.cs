@@ -401,7 +401,7 @@ namespace WindowTool
         MacSegmented segTheme;
         MacSwatches swatch;
         MacSlider slRadius;
-        MacSwitch swAutoRun, swSilent;
+        MacSwitch swAutoRun, swSilent, swMotion;
         MacButton btnExport, btnImport, btnReset;
         Label lblKeys, lblVer;
 
@@ -437,13 +437,23 @@ namespace WindowTool
             slRadius = Slider(0, 20, Host.Cfg.Int("radius", 10), (s, e) => Host.SetRadius(slRadius.Value));
             slRadius.Width = H(220);
 
+            swMotion = new MacSwitch();
+            swMotion.Checked = Motion.Enabled;
+            swMotion.CheckedChanged += (s, e) =>
+            {
+                Motion.Enabled = swMotion.Checked;
+                Host.Cfg.Set("motion", swMotion.Checked ? 1 : 0);
+                Host.Save();
+            };
+
             Card("外观",
                 Row("界面主题", "深色会同步系统标题栏配色", segTheme),
                 Row("强调色", "选中态、开关与进度条的主色", swatch),
-                Row("控件圆角", "0 为直角，建议 8~12", slRadius));
+                Row("控件圆角", "0 为直角，建议 8~12", slRadius),
+                Row("界面动画", "页面切换与悬停的过渡效果", swMotion));
 
             swAutoRun = new MacSwitch();
-            swAutoRun.CheckedChanged += (s, e) => SetAutoRun(swAutoRun.Checked);
+            swAutoRun.CheckedChanged += (s, e) => Host.SetAutoRun(swAutoRun.Checked, true);
             swSilent = new MacSwitch();
             swSilent.Checked = Host.Cfg.Bool("silentStart", false);
             swSilent.CheckedChanged += (s, e) => { Host.Cfg.Set("silentStart", swSilent.Checked); Host.Save(); };
@@ -521,33 +531,13 @@ namespace WindowTool
             Host.ResetSettings();
         }
 
-        void SetAutoRun(bool on)
-        {
-            try
-            {
-                using (var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Run"))
-                {
-                    if (k == null) { Host.ToastBad("无法打开注册表启动项。"); return; }
-                    if (on) k.SetValue("WindowTool", "\"" + Application.ExecutablePath + "\"");
-                    else k.DeleteValue("WindowTool", false);
-                }
-                Host.ToastGood(on ? "已开启开机自动运行。" : "已关闭开机自动运行。");
-            }
-            catch (Exception ex) { Program.Log(ex); Host.ToastBad("设置失败：" + ex.Message); }
-        }
-
         void Sync()
         {
-            bool ar = false;
-            try
-            {
-                using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Run", false))
-                    ar = k != null && k.GetValue("WindowTool") != null;
-            }
-            catch { }
-            if (swAutoRun.Checked != ar) swAutoRun.SetCheckedSilent(ar);
+            if (swAutoRun.Checked != Host.AutoRunOn()) swAutoRun.SetCheckedSilent(Host.AutoRunOn());
+            if (swMotion.Checked != Motion.Enabled) swMotion.SetCheckedSilent(Motion.Enabled);
+
+            int mode = Host.Cfg.Int("darkMode", Host.Cfg.Bool("dark", false) ? 1 : 0);
+            if (segTheme.SelectedIndex != mode) segTheme.SetIndexSilent(mode);
 
             string[] left = {
                 "1　置顶切换", "2　穿透置顶 / 取消", "3　上移一层",

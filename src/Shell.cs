@@ -184,13 +184,13 @@ namespace WindowTool
         }
     }
 
-    /// 红绿灯：整组悬停时显示 × − + 符号，与 macOS 行为一致。
+    /// 红绿灯：整组悬停时淡入 × − + 符号，与 macOS 行为一致。
     sealed class TrafficLights : Control
     {
         const int D = 12;
         const int GAP = 8;
-        bool hover;
         int hot = -1;
+        readonly HoverFade fade;
 
         public event Action Close;
         public event Action Minimize;
@@ -202,6 +202,7 @@ namespace WindowTool
                      ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
             BackColor = Color.Transparent;
             Size = Theme.Sz(D * 3 + GAP * 2 + 4, D + 4);
+            fade = new HoverFade(this);
         }
 
         Rectangle Dot(int i)
@@ -210,8 +211,8 @@ namespace WindowTool
             return new Rectangle(Theme.S(2) + i * (d + gp), Theme.S(2), d, d);
         }
 
-        protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
-        protected override void OnMouseLeave(EventArgs e) { hover = false; hot = -1; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseEnter(EventArgs e) { fade.To(1f, 130); Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hot = -1; fade.To(0f, 160); Invalidate(); base.OnMouseLeave(e); }
 
         protected override void OnMouseMove(MouseEventArgs e)
         {
@@ -241,17 +242,17 @@ namespace WindowTool
             g.Clear(Theme.SolidBack(this));
             Color[] fills = { Color.FromArgb(255, 95, 86), Color.FromArgb(255, 189, 46), Color.FromArgb(40, 201, 63) };
             Glyph[] glyphs = { Glyph.Close, Glyph.Minus, Glyph.Enlarge };
+            float a = fade.Value;
 
             for (int i = 0; i < 3; i++)
             {
                 var r = Dot(i);
-                Color c = fills[i];
-                using (var b = new SolidBrush(c)) g.FillEllipse(b, r);
-                using (var pen = new Pen(Color.FromArgb(40, 0, 0, 0), Math.Max(1f, Theme.S(1))))
+                using (var b = new SolidBrush(fills[i])) g.FillEllipse(b, r);
+                using (var pen = new Pen(Color.FromArgb((int)(46 * a), 0, 0, 0), Math.Max(1f, Theme.S(1))))
                     g.DrawEllipse(pen, r);
-                if (!hover) continue;
-                Color gc = Color.FromArgb(140, 0, 0, 0);
-                if (i == 2) gc = Color.FromArgb(255, 255, 255);
+                if (a < 0.02f) continue;
+                Color gc = Color.FromArgb((int)(150 * a), 0, 0, 0);
+                if (i == 2) gc = Color.FromArgb((int)(255 * a), 255, 255, 255);
                 var gr = new RectangleF(r.X + r.Width * 0.22f, r.Y + r.Height * 0.22f, r.Width * 0.56f, r.Height * 0.56f);
                 Icons.Draw(g, glyphs[i], gr, gc);
             }
@@ -267,11 +268,14 @@ namespace WindowTool
         public Color Tile = Theme.Accent;
     }
 
-    /// 侧栏导航：彩色圆角图标块 + 标题/副标题，选中项为强调色胶囊。
+    /// 侧栏导航：彩色圆角图标块 + 标题/副标题，选中胶囊在行间滑行。
     sealed class MacSidebar : Control, IThemed
     {
         readonly List<SidebarItem> items = new List<SidebarItem>();
         int sel, hover = -1;
+        float pillPos;            // 连续行号：胶囊滑动的实际位置
+        readonly HoverFade hoverFade;
+        readonly object pillTag = new object();
         public event EventHandler SelectedIndexChanged;
         public string Header;
 
@@ -282,6 +286,7 @@ namespace WindowTool
             BackColor = Color.Transparent;
             Width = Theme.S(230);
             Font = Theme.FontUi;
+            hoverFade = new HoverFade(this);
         }
 
         public void ApplyTheme()
@@ -301,10 +306,32 @@ namespace WindowTool
                 int v = value < 0 || value >= items.Count ? sel : value;
                 if (v == sel) return;
                 sel = v;
+                GlidePill(v);
                 Invalidate();
                 var h = SelectedIndexChanged;
                 if (h != null) h(this, EventArgs.Empty);
             }
+        }
+
+        /// 外部（热键、恢复上次页面）直接落位，不播放滑动动画。
+        public void SetSelectedSilent(int index)
+        {
+            if (index < 0 || index >= items.Count) return;
+            sel = index;
+            pillPos = index;
+            Invalidate();
+        }
+
+        void GlidePill(int target)
+        {
+            float from = pillPos;
+            if (Math.Abs(target - from) < 0.01f) { pillPos = target; return; }
+            int ms = 230 + (int)Math.Min(90, Math.Abs(target - from) * 45);
+            Motion.To(pillTag, ms, Ease.Spring, delegate(float t)
+            {
+                pillPos = from + (target - from) * t;
+                Invalidate();
+            });
         }
 
         public SidebarItem Selected { get { return sel >= 0 && sel < items.Count ? items[sel] : null; } }
@@ -319,15 +346,38 @@ namespace WindowTool
             return new Rectangle(pad, RowTop + i * (RowH + RowGap), Width - pad * 2, RowH);
         }
 
+        Rectangle PillRect(float pos)
+        {
+            int pad = Theme.S(10);
+            return new Rectangle(pad, RowTop + (int)Math.Round(pos * (RowH + RowGap)), Width - pad * 2, RowH);
+        }
+
+        float Weight(int i)
+        {
+            float w = 1f - Math.Abs(pillPos - i);
+            return w < 0f ? 0f : (w > 1f ? 1f : w);
+        }
+
         protected override void OnMouseMove(MouseEventArgs e)
         {
             int h = -1;
             for (int i = 0; i < items.Count; i++) if (RowRect(i).Contains(e.Location)) h = i;
-            if (h != hover) { hover = h; Invalidate(); }
+            if (h != hover)
+            {
+                hover = h;
+                hoverFade.To(h >= 0 && h != sel ? 1f : 0f, h >= 0 ? 140 : 110);
+                Invalidate();
+            }
             base.OnMouseMove(e);
         }
 
-        protected override void OnMouseLeave(EventArgs e) { hover = -1; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            hover = -1;
+            hoverFade.To(0f, 130);
+            Invalidate();
+            base.OnMouseLeave(e);
+        }
 
         protected override void OnMouseDown(MouseEventArgs e)
         {
@@ -357,37 +407,39 @@ namespace WindowTool
                 MacUi.LeftText(g, Header, Theme.FontTitle,
                     new RectangleF(Theme.S(16), Theme.S(48), Width - Theme.S(32), Theme.S(28)), Theme.Text);
 
+            // 悬停胶囊先画：滑动胶囊要压在它上面
+            if (hover >= 0 && hover != sel && hoverFade.Value > 0.01f)
+            {
+                using (var p = Theme.RoundRect(RowRect(hover), Theme.S(9)))
+                    Theme.FillPath(g, p, Theme.Alpha(Theme.Hover, (int)(255 * hoverFade.Value)));
+            }
+            if (items.Count > 0)
+            {
+                var pr = PillRect(pillPos);
+                using (var p = Theme.RoundRect(pr, Theme.S(9)))
+                {
+                    Theme.FillPath(g, p, Theme.Accent);
+                    Theme.StrokePath(g, p, Theme.Alpha(Color.Black, 20), Math.Max(1f, Theme.S(1)));
+                }
+            }
+
             for (int i = 0; i < items.Count; i++)
             {
                 var it = items[i];
                 var r = RowRect(i);
-                bool isSel = i == sel;
-                if (isSel)
-                {
-                    using (var p = Theme.RoundRect(r, Theme.S(8)))
-                    {
-                        Theme.FillPath(g, p, Theme.Accent);
-                        Theme.StrokePath(g, p, Theme.Alpha(Color.Black, 18), Math.Max(1f, Theme.S(1)));
-                    }
-                }
-                else if (i == hover)
-                {
-                    using (var p = Theme.RoundRect(r, Theme.S(8)))
-                        Theme.FillPath(g, p, Theme.Hover);
-                }
+                float w = Weight(i);
+                bool isSel = w > 0.5f;
 
-                int tile = Theme.S(24);
-                var tr = new Rectangle(r.X + Theme.S(8), r.Y + (r.Height - tile) / 2, tile, tile);
-                Color tileFill = isSel ? Color.FromArgb(58, 255, 255, 255) : it.Tile;
-                using (var p = Theme.RoundRect(tr, Theme.S(6)))
-                    Theme.FillPath(g, p, tileFill);
-                float isz = tile * 0.62f;
+                int tile = Theme.S(26);
+                var tr = new Rectangle(r.X + Theme.S(9), r.Y + (r.Height - tile) / 2, tile, tile);
+                DrawTile(g, tr, it.Tile, w, isSel);
+                float isz = tile * 0.6f;
                 Icons.Draw(g, it.Icon, new RectangleF(tr.X + (tile - isz) / 2f, tr.Y + (tile - isz) / 2f, isz, isz),
-                    isSel ? Color.White : Color.White);
+                    Color.White);
 
-                Color tc = isSel ? Theme.OnAccent : Theme.Text;
-                Color sc = isSel ? Theme.Alpha(Color.White, 205) : Theme.TextDim;
-                float tx = tr.Right + Theme.S(10);
+                Color tc = Blend(Theme.Text, Theme.OnAccent, w);
+                Color sc = Blend(Theme.TextDim, Color.FromArgb(205, 255, 255, 255), w);
+                float tx = tr.Right + Theme.S(11);
                 bool two = !string.IsNullOrEmpty(it.Subtitle);
                 if (two)
                 {
@@ -404,6 +456,42 @@ namespace WindowTool
                 }
             }
         }
+
+        static Color Blend(Color a, Color b, float t)
+        {
+            if (t <= 0f) return a;
+            if (t >= 1f) return b;
+            return Color.FromArgb(
+                (int)(a.A + (b.A - a.A) * t),
+                (int)(a.R + (b.R - a.R) * t),
+                (int)(a.G + (b.G - a.G) * t),
+                (int)(a.B + (b.B - a.B) * t));
+        }
+
+        /// 图标块：上亮下暗的渐变 + 顶部内高光 + 落地投影，选中时整体提亮一档。
+        void DrawTile(Graphics g, Rectangle r, Color baseColor, float w, bool isSel)
+        {
+            Color top = Theme.Lighten(baseColor, 0.22f);
+            Color bottom = Theme.Darken(baseColor, 0.14f);
+            if (isSel)
+            {
+                top = Blend(top, Color.FromArgb(74, 255, 255, 255), 0.55f * w);
+                bottom = Blend(bottom, Color.FromArgb(40, 255, 255, 255), 0.55f * w);
+            }
+            var rf = new RectangleF(r.X, r.Y, r.Width, r.Height);
+            float rad = Theme.S(7);
+            using (var sh = Theme.RoundRectF(new RectangleF(r.X, r.Y + Theme.S(1.5f), r.Width, r.Height), rad))
+                Theme.FillPath(g, sh, Theme.Alpha(Color.Black, Theme.IsDark ? 60 : 34));
+            using (var p = Theme.RoundRectF(rf, rad))
+            {
+                Theme.FillGradient(g, p, rf, top, bottom);
+                Theme.StrokePath(g, p, Theme.Alpha(Color.Black, 26), Math.Max(1f, Theme.S(1) * 0.9f));
+            }
+            using (var hi = Theme.RoundRectSidesF(new RectangleF(rf.X + 1f, rf.Y + 1f, rf.Width - 2f, rf.Height * 0.5f),
+                rad - 1f, true, false))
+            using (var b = new SolidBrush(Theme.Alpha(Color.White, 44)))
+                g.FillPath(b, hi);
+        }
     }
 
     /// 一页设置内容：卡片纵向堆叠、可滚动。子类在 Build 中声明卡片与行，基类负责排版。
@@ -413,6 +501,14 @@ namespace WindowTool
         protected readonly MacScrollPanel scroll = new MacScrollPanel();
         readonly List<CardSpec> specs = new List<CardSpec>();
         readonly List<Action> tickers = new List<Action>();
+        readonly object slideTag = new object();
+        Rectangle hostRect;
+
+        /// 入场位移：由 Motion 逐帧改写，只移动面板本身，不重排卡片。
+        public int SlideDx;
+
+        /// 每帧通知宿主重绘标题带——标题要跟着页面一起滑，但页面本身画不到那条带子上。
+        public Action SlideChanged;
 
         public abstract string Key { get; }
         public abstract string Title { get; }
@@ -442,6 +538,31 @@ namespace WindowTool
         public abstract void Build();
         public virtual void OnShow() { }
         public virtual void OnHide() { }
+
+        public void Place(Rectangle area)
+        {
+            hostRect = area;
+            ApplyBounds();
+        }
+
+        public void ApplyBounds()
+        {
+            SetBounds(hostRect.X + SlideDx, hostRect.Y, hostRect.Width, hostRect.Height);
+        }
+
+        /// dir=+1 从右侧滑入，-1 从左侧；配合侧栏胶囊的滑动方向读起来才连贯。
+        public void SlideIn(int dir)
+        {
+            if (!Motion.Enabled) { SlideDx = 0; ApplyBounds(); return; }
+            int from = Theme.S(22) * dir;
+            SlideDx = from;
+            Motion.To(slideTag, 270, Ease.Out, delegate(float t)
+            {
+                SlideDx = (int)Math.Round(from * (1f - t));
+                ApplyBounds();
+                if (SlideChanged != null) SlideChanged();
+            }, delegate { SlideDx = 0; ApplyBounds(); });
+        }
 
         public virtual void Tick()
         {
