@@ -1,6 +1,7 @@
 bin/
 obj/
 build/
+settings.txt
 *.user
 *.suo
 .vs/

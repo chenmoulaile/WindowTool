@@ -12,8 +12,7 @@ namespace WindowTool
         MacButton btnRefresh, btnPick;
         MacSwitch swTop, swOp2;
         MacSlider slAlpha;
-        MacSegmented segLayer;
-        MacButton btnBottom, btnCancelAll;
+        MacButton btnUp, btnDown, btnBottom, btnCancelAll;
         Label lblTarget, lblPinned;
         string filter = "";
 
@@ -71,23 +70,17 @@ namespace WindowTool
                 Row("点击穿透", "鼠标点击落到下层窗口，同时保持置顶（Ctrl+Alt+2）", swOp2),
                 Row("窗口透明度", "40 最透明 · 255 完全不透明，每个窗口独立记忆", slAlpha));
 
-            segLayer = new MacSegmented();
-            segLayer.SetItems(new[] { "上移一层", "下移一层" });
-            segLayer.SizeToCells();
-            segLayer.SelectedIndexChanged += (s, e) =>
-            {
-                if (segLayer.SelectedIndex == 0) Host.LayerDir(Host.Target, true);
-                else if (segLayer.SelectedIndex == 1) Host.LayerDir(Host.Target, false);
-            };
+            btnUp = Btn("上移一层", MacTone.Normal, (s, e) => Host.LayerDir(Host.Target, true));
+            btnDown = Btn("下移一层", MacTone.Normal, (s, e) => Host.LayerDir(Host.Target, false));
             btnBottom = Btn("移到最底", MacTone.Normal, (s, e) => Host.LayerBottom(Host.Target));
-            btnBottom.Width = H(92);
+            Fit(btnUp); Fit(btnDown); Fit(btnBottom);
             btnCancelAll = Btn("还原全部穿透置顶", MacTone.Danger, (s, e) => Host.CancelAllOp2());
             btnCancelAll.Width = H(150);
             lblPinned = Lbl("", Theme.FontSmall, Theme.TextDim);
             lblPinned.Width = H(300);
 
             Card("图层顺序",
-                Row("层级调整", "仅在同一层级带内移动，不会误跨置顶层（Ctrl+Alt+3 / 4）", segLayer, btnBottom),
+                Row("层级调整", "仅在同一层级带内移动，不会误跨置顶层（Ctrl+Alt+3 / 4）", btnBottom, btnDown, btnUp),
                 Row("已开启穿透置顶", "先开启的窗口始终压在后开启的之上", btnCancelAll));
 
             OnTick(Sync);
@@ -149,7 +142,7 @@ namespace WindowTool
                 swTop.Enabled = ok;
                 swOp2.Enabled = ok;
                 slAlpha.Enabled = ok;
-                segLayer.Enabled = ok;
+                btnUp.Enabled = ok; btnDown.Enabled = ok;
                 btnBottom.Enabled = ok;
                 swTop.SetCheckedSilent(ok && Manager.IsTopmost(t));
                 swOp2.SetCheckedSilent(ok && Manager.HasOp2(t));
@@ -316,76 +309,6 @@ namespace WindowTool
             int n = Manager.PinnedCount;
             lblState.Text = "轮播 " + (Host.VideoPlaylist == null ? 0 : Host.VideoPlaylist.Length) +
                 " 个视频　·　当前背景窗口 " + Host.BgCount + " 个　·　穿透置顶 " + n + " 个";
-        }
-    }
-
-    sealed class AlertsPage : Page
-    {
-        MacSwitch swOn, swLag;
-        MacField kwProc, kwTitle;
-        MacButton btnTest;
-        Label lblStatus;
-
-        public AlertsPage(MainForm h) : base(h) { }
-
-        public override string Key { get { return "alerts"; } }
-        public override string Title { get { return "被控提醒"; } }
-
-        public override void Build()
-        {
-            swOn = new MacSwitch();
-            swOn.Checked = Host.Cfg.Bool("uuEnabled", false);
-            swOn.CheckedChanged += (s, e) =>
-            {
-                Configure();
-                if (swOn.Checked) UuMonitor.Start(); else UuMonitor.Stop();
-                Host.Save();
-            };
-            swLag = new MacSwitch();
-            swLag.Checked = Host.Cfg.Bool("uuLag", true);
-            swLag.CheckedChanged += (s, e) => { Configure(); Host.Save(); };
-
-            kwProc = Field(Host.Cfg.Str("uuProc", "uu,gameviewer"), "逗号分隔多个关键词", null);
-            kwProc.Width = H(200);
-            kwTitle = Field(Host.Cfg.Str("uuTitle", "远程"), "留空则不校验标题", null);
-            kwTitle.Width = H(140);
-            kwProc.TextChanged += (s, e) => { if (swOn.Checked) Configure(); Host.Save(); };
-            kwTitle.TextChanged += (s, e) => { if (swOn.Checked) Configure(); Host.Save(); };
-
-            btnTest = Btn("试弹一次提醒", MacTone.Normal, (s, e) => UuMonitor.TestOnce());
-            Fit(btnTest);
-
-            Card("检测开关",
-                Row("启用被控提醒", "在远程控制接管时第一时间在鼠标旁提示", swOn),
-                Row("界面卡顿时也提醒", "采样消息循环延迟，捕捉远控造成的异常卡顿", swLag));
-
-            Card("匹配规则",
-                Row("进程名 / 路径包含", "匹配进程名或 exe 完整路径，逗号分隔", kwProc),
-                Row("窗口标题包含", "作为补充判据，命中即提醒", kwTitle),
-                Row("手动测试", "验证提醒样式，不影响检测状态", btnTest));
-
-            lblStatus = Lbl("", Theme.FontUi, Theme.TextDim);
-            lblStatus.Width = H(420);
-            lblStatus.Height = H(18);
-            Card("当前状态", Row("监控状态", "", lblStatus));
-
-            var info = Lbl(
-                "判定为启发式：内存 >100MB 进入被控态，<50MB 判定解除，中间区间保持原状态以防抖。" +
-                "被控期间红色迷你条跟随鼠标循环提醒（显示 2 秒、隐藏 4 秒），解除时单次提示 3 秒。",
-                Theme.FontSmall, Theme.TextDim);
-            info.Height = H(46);
-            FreeCard("判定逻辑", H(46), (card, w) => Put(info, card, H(14), 0, w - H(28), H(46)));
-
-            UuMonitor.StatusChanged += msg =>
-            {
-                try { BeginInvoke((Action)delegate { lblStatus.Text = msg; }); } catch { }
-            };
-            OnTick(() => { if (!swOn.Checked) lblStatus.Text = "未启用。"; });
-        }
-
-        void Configure()
-        {
-            UuMonitor.Configure(kwProc.Text, kwTitle.Text, swLag.Checked);
         }
     }
 }

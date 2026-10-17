@@ -21,14 +21,16 @@ namespace WindowTool
         public MacListItem(string title) { Title = title ?? ""; }
     }
 
-    /// 自绘列表：macOS 表格风格 —— 圆角选中条、可选图标、右侧次要文本、内嵌滚动条。
+    /// 自绘列表：macOS 表格风格 —— 圆角选中条、可选图标、右侧次要文本、像素级平滑滚动。
     sealed class MacList : Control, IThemed
     {
         readonly List<MacListItem> items = new List<MacListItem>();
-        int sel = -1, hover = -1, top;
+        int sel = -1, hover = -1;
+        int scrollPx, scrollTarget;
         int rowH;
         bool draggingBar;
         float dragGrab;
+        readonly Timer anim = new Timer();
 
         public event EventHandler SelectedIndexChanged;
         public event EventHandler ItemActivate;
@@ -39,18 +41,21 @@ namespace WindowTool
         public MacList()
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
-                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Selectable | ControlStyles.SupportsTransparentBackColor, true);
+                     ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Selectable |
+                     ControlStyles.SupportsTransparentBackColor, true);
             BackColor = Color.Transparent;
             Font = Theme.FontUi;
             DoubleBuffered = true;
             rowH = Theme.S(46);
+            anim.Interval = 15;
+            anim.Tick += (s, e) => Step();
         }
 
         public void ApplyTheme()
         {
             Font = Theme.FontUi;
             rowH = Theme.S(46);
-            ClampTop();
+            Clamp();
             Invalidate();
         }
 
@@ -61,7 +66,7 @@ namespace WindowTool
             items.Clear();
             if (list != null) items.AddRange(list);
             if (sel >= items.Count) sel = items.Count - 1;
-            ClampTop();
+            Clamp();
             Invalidate();
         }
 
@@ -84,33 +89,53 @@ namespace WindowTool
         public MacListItem SelectedItem { get { return sel >= 0 && sel < items.Count ? items[sel] : null; } }
 
         void RaiseSelected() { var h = SelectedIndexChanged; if (h != null) h(this, EventArgs.Empty); }
-
         void RaiseActivate() { var h = ItemActivate; if (h != null) h(this, EventArgs.Empty); }
 
-        int VisibleRows { get { return Math.Max(1, (Height - Theme.S(2)) / rowH); } }
-        bool NeedsScroll { get { return items.Count > VisibleRows; } }
-        int BarW { get { return NeedsScroll ? Theme.S(8) : 0; } }
+        int ViewH { get { return Math.Max(rowH, Height - Theme.S(2)); } }
+        int MaxPx { get { return Math.Max(0, items.Count * rowH - ViewH); } }
+        bool NeedsScroll { get { return MaxPx > 0; } }
+        int BarW { get { return NeedsScroll ? Theme.S(6) : 0; } }
+        int TopIndex { get { return rowH <= 0 ? 0 : scrollPx / rowH; } }
 
-        void ClampTop()
+        void Step()
         {
-            int maxTop = Math.Max(0, items.Count - VisibleRows);
-            if (top > maxTop) top = maxTop;
-            if (top < 0) top = 0;
+            int d = scrollTarget - scrollPx;
+            if (d == 0) { anim.Stop(); return; }
+            int move = (int)Math.Round(d * 0.32);
+            if (move == 0) move = d > 0 ? 1 : -1;
+            scrollPx += move;
+            if (Math.Abs(scrollTarget - scrollPx) <= 1) { scrollPx = scrollTarget; anim.Stop(); }
+            Invalidate();
+        }
+
+        void ScrollBy(int dy)
+        {
+            scrollTarget = ClampPx(scrollTarget + dy);
+            anim.Start();
+        }
+
+        int ClampPx(int v) { return Math.Max(0, Math.Min(MaxPx, v)); }
+
+        void Clamp()
+        {
+            scrollPx = ClampPx(scrollPx);
+            scrollTarget = ClampPx(scrollTarget);
         }
 
         void EnsureVisible(int i)
         {
             if (i < 0) return;
-            ClampTop();
-            if (i < top) top = i;
-            else if (i >= top + VisibleRows) top = i - VisibleRows + 1;
-            ClampTop();
+            int y0 = i * rowH, y1 = y0 + rowH;
+            if (y0 < scrollTarget) scrollTarget = y0;
+            else if (y1 > scrollTarget + ViewH) scrollTarget = y1 - ViewH;
+            scrollTarget = ClampPx(scrollTarget);
+            anim.Start();
         }
 
         int Hit(Point p)
         {
             if (p.Y < Theme.S(1)) return -1;
-            int i = top + (p.Y - Theme.S(1)) / rowH;
+            int i = (p.Y - Theme.S(1) + scrollPx) / rowH;
             if (i < 0 || i >= items.Count) return -1;
             if (p.X > Width - BarW - Theme.S(2)) return -1;
             return i;
@@ -120,10 +145,8 @@ namespace WindowTool
         {
             if (draggingBar && NeedsScroll)
             {
-                int trackH = Height - Theme.S(4);
-                float f = trackH <= 0 ? 0f : (e.Y - dragGrab - Theme.S(2)) / Math.Max(1, trackH - BarHeight());
-                top = Math.Max(0, Math.Min(items.Count - VisibleRows, (int)Math.Round(f * (items.Count - VisibleRows))));
-                ClampTop();
+                float f = (e.Y - dragGrab - Theme.S(2)) / Math.Max(1, Height - Theme.S(4) - BarHeight());
+                scrollPx = scrollTarget = ClampPx((int)(f * MaxPx));
                 Invalidate();
                 return;
             }
@@ -147,10 +170,8 @@ namespace WindowTool
                     Capture = true;
                     return;
                 }
-                int maxTop = Math.Max(0, items.Count - VisibleRows);
                 float f = (e.Y - Theme.S(2)) / Math.Max(1, Height - Theme.S(4));
-                top = Math.Max(0, Math.Min(maxTop, (int)(f * maxTop) - VisibleRows / 2));
-                ClampTop();
+                scrollPx = scrollTarget = ClampPx((int)(f * MaxPx) - ViewH / 2);
                 Invalidate();
                 return;
             }
@@ -183,10 +204,7 @@ namespace WindowTool
 
         protected override void OnMouseWheel(MouseEventArgs e)
         {
-            int step = Math.Max(1, VisibleRows / 6);
-            top += e.Delta < 0 ? step : -step;
-            ClampTop();
-            Invalidate();
+            ScrollBy(e.Delta < 0 ? rowH * 3 : -rowH * 3);
             base.OnMouseWheel(e);
         }
 
@@ -199,28 +217,28 @@ namespace WindowTool
         protected override void OnKeyDown(KeyEventArgs e)
         {
             if (items.Count == 0) return;
+            int rows = Math.Max(1, ViewH / rowH);
             if (e.KeyCode == Keys.Down) SelectedIndex = Math.Min(items.Count - 1, sel + 1);
             else if (e.KeyCode == Keys.Up) SelectedIndex = Math.Max(0, sel < 0 ? 0 : sel - 1);
-            else if (e.KeyCode == Keys.PageDown) SelectedIndex = Math.Min(items.Count - 1, sel + VisibleRows);
-            else if (e.KeyCode == Keys.PageUp) SelectedIndex = Math.Max(0, sel - VisibleRows);
+            else if (e.KeyCode == Keys.PageDown) SelectedIndex = Math.Min(items.Count - 1, sel + rows);
+            else if (e.KeyCode == Keys.PageUp) SelectedIndex = Math.Max(0, sel - rows);
             else if (e.KeyCode == Keys.Home) SelectedIndex = 0;
             else if (e.KeyCode == Keys.End) SelectedIndex = items.Count - 1;
             else if (e.KeyCode == Keys.Return) RaiseActivate();
             base.OnKeyDown(e);
         }
 
-        protected override void OnSizeChanged(EventArgs e) { ClampTop(); base.OnSizeChanged(e); }
+        protected override void OnSizeChanged(EventArgs e) { Clamp(); base.OnSizeChanged(e); }
 
         int BarHeight()
         {
-            float r = VisibleRows / (float)Math.Max(1, items.Count);
+            float r = ViewH / (float)Math.Max(rowH * items.Count, ViewH);
             return Math.Max(Theme.S(28), (int)((Height - Theme.S(4)) * Math.Min(1f, r)));
         }
 
         int BarY()
         {
-            int maxTop = Math.Max(1, items.Count - VisibleRows);
-            float f = top / (float)maxTop;
+            float f = MaxPx <= 0 ? 0f : scrollPx / (float)MaxPx;
             return Theme.S(2) + (int)(f * Math.Max(0, (Height - Theme.S(4)) - BarHeight()));
         }
 
@@ -240,10 +258,11 @@ namespace WindowTool
 
             int inset = Theme.S(4);
             int contentW = Width - BarW - inset * 2;
-            for (int i = top; i < items.Count; i++)
+            for (int i = TopIndex; i < items.Count; i++)
             {
-                int y = Theme.S(1) + (i - top) * rowH;
+                int y = Theme.S(1) + i * rowH - scrollPx;
                 if (y > Height) break;
+                if (y + rowH < 0) continue;
                 var it = items[i];
                 var rowRect = new Rectangle(inset, y + Theme.S(1), contentW, rowH - Theme.S(2));
 
@@ -282,8 +301,7 @@ namespace WindowTool
                     TextFormatFlags.NoPadding).Width + Theme.S(12) : 0;
                 float textW = Math.Max(Theme.S(20), rowRect.Right - tx - pad + Theme.S(10) - dw);
 
-                bool two = !string.IsNullOrEmpty(it.Subtitle);
-                if (two)
+                if (!string.IsNullOrEmpty(it.Subtitle))
                 {
                     MacUi.LeftText(g, Theme.Ellipsis(it.Title, Font, (int)textW), Font,
                         new RectangleF(tx, rowRect.Y + Theme.S(5), textW, Theme.S(22)), tc);
@@ -311,7 +329,7 @@ namespace WindowTool
             {
                 int by = BarY(), bh = BarHeight();
                 using (var p = Theme.RoundRect(new Rectangle(Width - BarW - Theme.S(1), by, BarW, bh), BarW))
-                    Theme.FillPath(g, p, Theme.Alpha(Theme.Text, draggingBar ? 120 : 60));
+                    Theme.FillPath(g, p, Theme.Alpha(Theme.Text, draggingBar ? 110 : 42));
             }
         }
     }

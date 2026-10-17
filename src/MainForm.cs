@@ -174,14 +174,12 @@ namespace WindowTool
             AddSidebarItem("window", "窗口", "置顶与穿透", Glyph.Pin, Color.FromArgb(0, 122, 255));
             AddSidebarItem("bg", "背景", "图片与视频", Glyph.Picture, Color.FromArgb(175, 82, 222));
             AddSidebarItem("music", "音乐", "播放与歌词", Glyph.Music, Color.FromArgb(255, 45, 85));
-            AddSidebarItem("alerts", "被控提醒", "被控检测", Glyph.Shield, Color.FromArgb(255, 149, 0));
             AddSidebarItem("env", "竞赛环境", "一键部署", Glyph.Box, Color.FromArgb(48, 176, 199));
             AddSidebarItem("general", "通用", "外观与热键", Glyph.Gear, Color.FromArgb(142, 142, 147));
 
             Register(new WindowPage(this));
             Register(new BackgroundPage(this));
             Register(new MusicPage(this));
-            Register(new AlertsPage(this));
             Register(new EnvPage(this));
             Register(new GeneralPage(this));
         }
@@ -676,7 +674,6 @@ namespace WindowTool
             if (tmr != null) tmr.Stop();
             if (tmrBg != null) tmrBg.Stop();
             if (tmrAuto != null) tmrAuto.Stop();
-            UuMonitor.Stop();
             UnregisterHotkeys();
             if (capture != null) capture.Dispose();
             StopMusic();

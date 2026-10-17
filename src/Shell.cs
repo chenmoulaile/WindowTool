@@ -19,7 +19,8 @@ namespace WindowTool
         const int GWL_STYLE = -16;
         const int WS_THICKFRAME = 0x00040000;
         const int WS_MINIMIZEBOX = 0x00020000;
-        const int CS_DROPSHADOW = 0x00020000;
+        const int WS_MAXIMIZEBOX = 0x00010000;
+        const int WS_SYSMENU = 0x00080000;
 
         [DllImport("user32.dll")]
         static extern bool ReleaseCapture();
@@ -45,7 +46,7 @@ namespace WindowTool
                      ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
             BackColor = Theme.Window;
             MinimizeBox = true;
-            MaximizeBox = false;
+            MaximizeBox = true;
             KeyPreview = true;
             Controls.Add(lights);
             lights.Location = Theme.P(16, 14);
@@ -63,8 +64,9 @@ namespace WindowTool
             get
             {
                 var cp = base.CreateParams;
-                cp.ClassStyle |= CS_DROPSHADOW;
-                cp.Style |= WS_THICKFRAME | WS_MINIMIZEBOX;
+                // 只保留 WS_THICKFRAME 用于边缘拖拽缩放；非客户区渲染在 ApplyChrome 里关掉，
+                // 否则 Win11 会在无边框窗口四周画出一圈灰色粗边框
+                cp.Style |= WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU;
                 return cp;
             }
         }
@@ -79,6 +81,10 @@ namespace WindowTool
         {
             try
             {
+                int ncOff = 1;                      // DWMWA_NCRENDERING_POLICY(3) = DWMNCRP_DISABLED
+                DwmSetWindowAttribute(Handle, 3, ref ncOff, 4);
+                int ncDisabled = 0;                 // DWMWA_NCRENDERING_ENABLED(1) = FALSE
+                DwmSetWindowAttribute(Handle, 1, ref ncDisabled, 4);
                 int pref = 2;                       // DWMWA_WINDOW_CORNER_PREFERENCE = ROUND
                 DwmSetWindowAttribute(Handle, 33, ref pref, 4);
                 int dark = Theme.IsDark ? 1 : 0;
@@ -87,6 +93,8 @@ namespace WindowTool
             }
             catch { }
             ApplyRegion();
+            // 无边框窗口最大化默认会盖住任务栏，显式限制到工作区
+            try { MaximizedBounds = Screen.FromHandle(Handle).WorkingArea; } catch { }
         }
 
         void ApplyRegion()
@@ -301,7 +309,7 @@ namespace WindowTool
 
         public SidebarItem Selected { get { return sel >= 0 && sel < items.Count ? items[sel] : null; } }
 
-        int RowTop { get { return Theme.S(58); } }
+        int RowTop { get { return Theme.S(84); } }
         int RowH { get { return Theme.S(52); } }
         int RowGap { get { return Theme.S(4); } }
 
@@ -347,7 +355,7 @@ namespace WindowTool
 
             if (!string.IsNullOrEmpty(Header))
                 MacUi.LeftText(g, Header, Theme.FontTitle,
-                    new RectangleF(Theme.S(16), Theme.S(12), Width - Theme.S(32), Theme.S(26)), Theme.Text);
+                    new RectangleF(Theme.S(16), Theme.S(48), Width - Theme.S(32), Theme.S(28)), Theme.Text);
 
             for (int i = 0; i < items.Count; i++)
             {

@@ -8,7 +8,8 @@ namespace WindowTool
     sealed class MacScrollPanel : Panel, IThemed
     {
         readonly Panel canvas;
-        int offset, contentH;
+        int offset, target, contentH;
+        readonly Timer anim = new Timer();
         readonly MacScrollBar bar = new MacScrollBar();
 
         public MacScrollPanel()
@@ -20,6 +21,27 @@ namespace WindowTool
             Controls.Add(canvas);
             Controls.Add(bar);
             bar.Owner = this;
+            anim.Interval = 15;
+            anim.Tick += (s, e) => Step();
+        }
+
+        void Step()
+        {
+            int d = target - offset;
+            if (d == 0) { anim.Stop(); return; }
+            offset += (int)Math.Round(d * 0.30);
+            if (offset == target - d) offset = target;          // 避免 1px 抖动
+            if (Math.Abs(target - offset) <= 1) { offset = target; anim.Stop(); }
+            canvas.Top = -offset;
+            bar.Invalidate();
+            Invalidate();
+        }
+
+        public void ScrollBy(int dy)
+        {
+            if (!CanScroll) return;
+            target = Math.Max(0, Math.Min(MaxOffset, target + dy));
+            anim.Start();
         }
 
         /// 内容画布：Panel.SetStyle 是受保护成员，必须由派生类自己开启自绘样式。
@@ -48,20 +70,23 @@ namespace WindowTool
             Clamp();
         }
 
+        /// 立即定位（滚动条拖拽用），不走缓动
         public void SetOffset(int v)
         {
-            offset = Math.Max(0, Math.Min(MaxOffset, v));
+            int nv = Math.Max(0, Math.Min(MaxOffset, v));
+            offset = nv; target = nv;
+            anim.Stop();
             canvas.Top = -offset;
             bar.Invalidate();
             Invalidate();
         }
 
-        void Clamp() { if (offset > MaxOffset) SetOffset(MaxOffset); }
+        void Clamp() { if (offset > MaxOffset) SetOffset(MaxOffset); else if (target > MaxOffset) target = MaxOffset; }
 
         protected override void OnMouseWheel(MouseEventArgs e)
         {
-            int step = Math.Max(Theme.S(30), Height / 6);
-            SetOffset(offset + (e.Delta < 0 ? step : -step));
+            int per = Math.Max(Theme.S(40), Height / 12);
+            ScrollBy(e.Delta < 0 ? per : -per);
             base.OnMouseWheel(e);
         }
 

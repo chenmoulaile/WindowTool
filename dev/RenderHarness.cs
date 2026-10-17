@@ -37,7 +37,7 @@ namespace WindowTool
             if (argv.Length > 1 && argv[1] == "smoke") { Smoke(); return; }
 
             MainForm.DesignRender = true;
-            string[] keys = { "window", "bg", "music", "alerts", "env", "general" };
+            string[] keys = { "window", "bg", "music", "env", "general" };
             foreach (string mode in new[] { "light", "dark" })
             {
                 WriteSettings(mode == "dark" ? "darkMode=1" : "darkMode=0");
@@ -51,10 +51,6 @@ namespace WindowTool
             }
 
             WriteSettings("darkMode=0");
-
-            var a = new AlertForm();
-            a.SetLine("你已被控制");
-            Shot(a, Path.Combine(dir, "ui_alert.png"), 4);
 
             var l = new DesktopLyricsForm();
             l.SetLine("中间一段很好听 副歌进来了");
@@ -138,7 +134,7 @@ namespace WindowTool
         static void WriteSettings(string extra)
         {
             string s = "bgAlpha=240\nswitchMin=0\nswitchSec=0\nfitMode=0\nradius=10\n" +
-                "uuProc=uu,gameviewer\nuuTitle=远程\nuuEnabled=1\nuuLag=1\nsilentStart=0\nbgMem=1\n" +
+                "silentStart=0\nbgMem=1\n" +
                 extra + "\nbgCount=0\n";
             File.WriteAllText(Path.Combine(Application.StartupPath, "settings.txt"), s);
         }
