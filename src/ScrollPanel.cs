@@ -9,7 +9,7 @@ namespace WindowTool
     {
         readonly Panel canvas;
         int offset, target, contentH;
-        readonly Timer anim = new Timer();
+        readonly object glideTag = new object();
         readonly MacScrollBar bar = new MacScrollBar();
 
         public MacScrollPanel()
@@ -21,27 +21,34 @@ namespace WindowTool
             Controls.Add(canvas);
             Controls.Add(bar);
             bar.Owner = this;
-            anim.Interval = 15;
-            anim.Tick += (s, e) => Step();
+
         }
 
-        void Step()
+        void Apply()
         {
-            int d = target - offset;
-            if (d == 0) { anim.Stop(); return; }
-            offset += (int)Math.Round(d * 0.30);
-            if (offset == target - d) offset = target;          // 避免 1px 抖动
-            if (Math.Abs(target - offset) <= 1) { offset = target; anim.Stop(); }
             canvas.Top = -offset;
             bar.Invalidate();
             Invalidate();
+        }
+
+        /// 与列表用同一套墙钟补间；按帧数收敛会让滚动随帧率忽快忽慢。
+        void Glide()
+        {
+            int from = offset, to = target;
+            if (from == to) return;
+            int ms = Math.Min(300, 120 + Math.Abs(to - from) / 4);
+            Motion.To(glideTag, ms, Ease.Out, delegate(float t)
+            {
+                offset = from + (int)Math.Round((to - from) * t);
+                if (!IsDisposed) Apply();
+            }, delegate { offset = to; if (!IsDisposed) Apply(); });
         }
 
         public void ScrollBy(int dy)
         {
             if (!CanScroll) return;
             target = Math.Max(0, Math.Min(MaxOffset, target + dy));
-            anim.Start();
+            Glide();
         }
 
         /// 内容画布：Panel.SetStyle 是受保护成员，必须由派生类自己开启自绘样式。
@@ -75,7 +82,7 @@ namespace WindowTool
         {
             int nv = Math.Max(0, Math.Min(MaxOffset, v));
             offset = nv; target = nv;
-            anim.Stop();
+            Motion.Cancel(glideTag);
             canvas.Top = -offset;
             bar.Invalidate();
             Invalidate();

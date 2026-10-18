@@ -145,6 +145,19 @@ namespace WindowTool
 
             Cost("page", page);
             Cost("sidebar", side);
+            Theme.ShadowQuality = 0;
+            Console.WriteLine("PERF page paint (no shadow) = " + Best(PaintFull(page)).ToString("0.0") + "ms");
+            Theme.ShadowQuality = 100;
+            Console.WriteLine("PERF page paint (full shadow) = " + Best(PaintFull(page)).ToString("0.0") + "ms");
+            BlitTest(page.Width, page.Height);
+            RowBlitTest(page.Width, Theme.S(46), 11);
+            var list = new MacList();
+            list.SetBounds(0, 0, page.Width, Theme.S(300));
+            list.CreateControl();
+            for (int i = 0; i < 30; i++) list.Items.Add(new MacListItem("2026 CSP-S MoniSai day" + i + ".cpp")
+            { Subtitle = "sublime_text · PX_WINDOW_CLASS" });
+            Console.WriteLine("PERF list full paint=" + Best(PaintFull(list)).ToString("0.0") + "ms rows=" + list.Items.Count);
+
             var rowBand = new Rectangle(0, Theme.S(84) + Theme.S(52) * 2 - Theme.S(6),
                 side.Width, Theme.S(52) * 2 + Theme.S(16));
             Console.WriteLine("PERF sidebar 2-rows paint=" + PaintClip(side, rowBand).ToString("0.0") + "ms");
@@ -172,6 +185,29 @@ namespace WindowTool
             var sw2 = Stopwatch.StartNew();
             for (int i = 0; i < 5; i++) rw.Invoke(f, null);
             Console.WriteLine("PERF RefreshWindows avg=" + (sw2.ElapsedMilliseconds / 5.0).ToString("0.0") + "ms");
+
+            // 转场合成层：截图成本 + 每帧 blit 帧数
+            double grab = Best(delegate
+            {
+                var t0 = Stopwatch.StartNew();
+                var b = SnapLayer.Grab(page);
+                double ms = t0.Elapsed.TotalMilliseconds;
+                if (b != null) b.Dispose();
+                return ms;
+            });
+            Console.WriteLine("PERF grab page = " + grab.ToString("0.0") + "ms (一次性)");
+            var sl = new SnapLayer();
+            sl.Parent = page.Parent;
+            sl.CreateControl();
+            int paints = 0;
+            sl.Paint += delegate { paints++; };
+            sl.Play(page.Bounds, SnapLayer.Grab(page), SnapLayer.Grab(page), -1);
+            var shut2 = new System.Windows.Forms.Timer { Interval = 400 };
+            shut2.Tick += delegate { shut2.Stop(); Application.ExitThread(); };
+            shut2.Start();
+            Application.Run();
+            Console.WriteLine("PERF transition blit frames=" + paints + " in 250ms (60fps 应有约 15 帧)");
+            sl.Dispose();
 
             var mm = new MacMenu();
             mm.AddItem("显示主界面", Glyph.Window, null);
@@ -232,6 +268,71 @@ namespace WindowTool
         }
 
         // 只画某一矩形区域（模拟局部重绘），直接调用 OnPaint
+        static double Best(Func<double> f)
+        {
+            double best = double.MaxValue;
+            for (int i = 0; i < 12; i++) { double v = f(); if (v < best) best = v; }
+            return best;
+        }
+
+        // 位图必须复用：每次新建 1.4MP 位图会让"绘制耗时"里混进 14ms 的分配开销
+        static Func<double> PaintFull(Control c)
+        {
+            var reuse = new Bitmap(Math.Max(1, c.Width), Math.Max(1, c.Height));
+            return delegate
+            {
+                var sw = Stopwatch.StartNew();
+                c.DrawToBitmap(reuse, new Rectangle(0, 0, c.Width, c.Height));
+                return sw.Elapsed.TotalMilliseconds;
+            };
+        }
+
+        /// 整页位图带偏移 blit：这是"用合成做动画"的成本上限
+        static void BlitTest(int w, int h)
+        {
+            using (var src = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppPArgb))
+            using (var dst = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppPArgb))
+            using (var g = Graphics.FromImage(dst))
+            {
+                g.Clear(System.Drawing.Color.FromArgb(180, 90, 120, 200));
+                double ms = Best(delegate
+                {
+                    var sw = Stopwatch.StartNew();
+                    g.DrawImage(src, new Rectangle(6, 4, w, h), new Rectangle(0, 0, w, h),
+                        GraphicsUnit.Pixel);
+                    return sw.Elapsed.TotalMilliseconds;
+                });
+                Console.WriteLine("PERF blit " + w + "x" + h + " = " + ms.ToString("0.0") + "ms/frame");
+            }
+        }
+
+        /// 逐行位图 blit（列表滚动的目标做法）
+        static void RowBlitTest(int w, int rowH, int rows)
+        {
+            var band = new List<Bitmap>();
+            try
+            {
+                for (int i = 0; i < rows; i++)
+                {
+                    var b = new Bitmap(w, rowH, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+                    using (var g = Graphics.FromImage(b)) g.Clear(System.Drawing.Color.FromArgb(200, 120, 140, 220));
+                    band.Add(b);
+                }
+                using (var dst = new Bitmap(w, rowH * rows, System.Drawing.Imaging.PixelFormat.Format32bppPArgb))
+                using (var g = Graphics.FromImage(dst))
+                {
+                    double ms = Best(delegate
+                    {
+                        var sw = Stopwatch.StartNew();
+                        for (int i = 0; i < band.Count; i++) g.DrawImageUnscaled(band[i], 0, i * rowH - 7);
+                        return sw.Elapsed.TotalMilliseconds;
+                    });
+                    Console.WriteLine("PERF rowblit " + rows + "x(" + w + "x" + rowH + ") = " + ms.ToString("0.0") + "ms/frame");
+                }
+            }
+            finally { foreach (var b in band) b.Dispose(); }
+        }
+
         static double PaintClip(Control c, Rectangle clip)
         {
             var m = c.GetType().GetMethod("OnPaint", BindingFlags.NonPublic | BindingFlags.Instance);

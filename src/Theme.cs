@@ -278,9 +278,15 @@ namespace WindowTool
             using (var p = new Pen(c, width)) g.DrawPath(p, path);
         }
 
+        /// 投影层数开关：多层叠加是整页重绘里最贵的一项，低画质/低端机可以砍掉。
+        public static int ShadowQuality = 100;   // 0~100，按百分比缩减层数
+
         // macOS 式柔和投影：多层半透明圆角叠加
         public static void Shadow(Graphics g, Rectangle r, int radius, int spread, Color tint)
         {
+            if (ShadowQuality < 100)
+                spread = spread * Math.Max(0, ShadowQuality) / 100;
+            if (spread <= 0) return;
             for (int i = spread; i >= 1; i--)
             {
                 var rr = new Rectangle(r.X - i, r.Y - i + 1, r.Width + i * 2, r.Height + i * 2);

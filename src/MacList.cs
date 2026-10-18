@@ -30,7 +30,7 @@ namespace WindowTool
         int rowH;
         bool draggingBar;
         float dragGrab;
-        readonly Timer anim = new Timer();
+        readonly object scrollTag = new object();
 
         public event EventHandler SelectedIndexChanged;
         public event EventHandler ItemActivate;
@@ -47,8 +47,6 @@ namespace WindowTool
             Font = Theme.FontUi;
             DoubleBuffered = true;
             rowH = Theme.S(46);
-            anim.Interval = 15;
-            anim.Tick += (s, e) => Step();
         }
 
         public void ApplyTheme()
@@ -97,21 +95,24 @@ namespace WindowTool
         int BarW { get { return NeedsScroll ? Theme.S(6) : 0; } }
         int TopIndex { get { return rowH <= 0 ? 0 : scrollPx / rowH; } }
 
-        void Step()
+        /// 按墙钟补间：原来每帧乘 0.32 是"按帧数"收敛，
+        /// 掉一帧动画就被拉长，快慢还随帧率变。
+        void Glide()
         {
-            int d = scrollTarget - scrollPx;
-            if (d == 0) { anim.Stop(); return; }
-            int move = (int)Math.Round(d * 0.32);
-            if (move == 0) move = d > 0 ? 1 : -1;
-            scrollPx += move;
-            if (Math.Abs(scrollTarget - scrollPx) <= 1) { scrollPx = scrollTarget; anim.Stop(); }
-            Invalidate();
+            int from = scrollPx, to = scrollTarget;
+            if (from == to) return;
+            int ms = Math.Min(280, 110 + Math.Abs(to - from) / 3);
+            Motion.To(scrollTag, ms, Ease.Out, delegate(float t)
+            {
+                scrollPx = from + (int)Math.Round((to - from) * t);
+                if (!IsDisposed) Invalidate();
+            }, delegate { scrollPx = to; if (!IsDisposed) Invalidate(); });
         }
 
         void ScrollBy(int dy)
         {
             scrollTarget = ClampPx(scrollTarget + dy);
-            anim.Start();
+            Glide();
         }
 
         int ClampPx(int v) { return Math.Max(0, Math.Min(MaxPx, v)); }
@@ -129,7 +130,7 @@ namespace WindowTool
             if (y0 < scrollTarget) scrollTarget = y0;
             else if (y1 > scrollTarget + ViewH) scrollTarget = y1 - ViewH;
             scrollTarget = ClampPx(scrollTarget);
-            anim.Start();
+            Glide();
         }
 
         int Hit(Point p)

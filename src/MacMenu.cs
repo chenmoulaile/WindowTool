@@ -30,9 +30,10 @@ namespace WindowTool
             return Theme.IsDark ? Color.FromArgb(46, 46, 51) : Color.FromArgb(251, 251, 253);
         }
 
-        public int Pad { get { return Theme.S(6); } }
-        public int RowH { get { return Theme.S(30); } }
-        public int Gutter { get { return Theme.S(26); } }
+        // macOS 菜单是紧凑的：行高 22、图标槽 22。之前 30 的行长得很"Windows 95"。
+        public int Pad { get { return Theme.S(5); } }
+        public int RowH { get { return Theme.S(22); } }
+        public int Gutter { get { return Theme.S(22); } }
 
         /// 分隔线条目的宽度：与最宽条目对齐，靠 Layout 阶段回填。
         public int LineWidth
@@ -62,7 +63,7 @@ namespace WindowTool
                 m.Relayout();                     // 分隔线的高度在这里才落定
                 if (!m.Line) content = Math.Max(content, m.NaturalWidth);
             }
-            if (content < Theme.S(150)) content = Theme.S(150);
+            if (content < Theme.S(168)) content = Theme.S(168);
             foreach (ToolStripItem it in Items)
             {
                 var m = it as MacMenuItem;
@@ -74,8 +75,13 @@ namespace WindowTool
             AutoSize = false;
             Width = content + Pad * 2;
             PerformLayout();
-            // 以显示区实际宽度为准：ToolStrip 内部还有自己的边距，
-            // 直接按 Width-Padding 算会让条目比可用区宽出一截。
+            // ToolStrip 在右侧还留了一条内部空隙（滚动按钮位）。不补偿的话
+            // 左内缩 12、右内缩 22，胶囊看起来明显偏左——就是"廉价感"的来源之一。
+            int chrome = Width - DisplayRectangle.Width - Pad * 2;
+            if (chrome < 0) chrome = 0;
+            Padding = new Padding(Pad + chrome, Pad, Pad + chrome, Pad);
+            Width = content + (Pad + chrome) * 2;
+            PerformLayout();
             int inner = Math.Max(Theme.S(80), DisplayRectangle.Width);
             foreach (ToolStripItem it in Items)
             {
@@ -195,13 +201,13 @@ namespace WindowTool
             {
                 int tw = TextRenderer.MeasureText(Text ?? "", menu.Font, Size.Empty,
                     TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
-                return menu.Gutter + tw + Theme.S(30);
+                return menu.Gutter + tw + Theme.S(34);
             }
         }
 
         public void Relayout()
         {
-            Height = Line ? Theme.S(11) : menu.RowH;
+            Height = Line ? Theme.S(9) : menu.RowH;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -220,12 +226,12 @@ namespace WindowTool
             float a = fade.Value;
             if (a > 0.01f)
             {
-                var pill = new RectangleF(0, (Height - Theme.S(24)) / 2f,
-                    Width - Theme.S(4), Theme.S(24));
+                var pill = new RectangleF(Theme.S(2), 1,
+                    Width - Theme.S(4), Height - 2);
                 Color basePill = Tone == MacTone.Danger ? Theme.Red : Theme.Accent;
                 Color c = Theme.Blend(Theme.Hover, basePill, a);
                 if (!Enabled) c = Theme.Alpha(Theme.Hover, (int)(160 * a));
-                using (var p = Theme.RoundRectF(pill, Theme.S(7)))
+                using (var p = Theme.RoundRectF(pill, Theme.S(5)))
                 {
                     Theme.FillPath(g, p, c);
                     if (a > 0.5f)
@@ -242,8 +248,8 @@ namespace WindowTool
                 text = Theme.Blend(text, on, a);
             }
 
-            int d = Theme.S(16);
-            var box = new RectangleF(Theme.S(6), (Height - d) / 2f, d, d);
+            int d = Theme.S(13);
+            var box = new RectangleF(Theme.S(5), (Height - d) / 2f, d, d);
             Icons.Draw(g, Icon, box, glyph);
 
             TextRenderer.DrawText(g, Text ?? "", menu.Font,
@@ -253,9 +259,9 @@ namespace WindowTool
 
             if (Flag)
             {
-                int cd = Theme.S(14);
+                int cd = Theme.S(12);
                 Icons.Draw(g, Glyph.Check,
-                    new RectangleF(Width - cd - Theme.S(12), (Height - cd) / 2f, cd, cd),
+                    new RectangleF(Width - cd - Theme.S(8), (Height - cd) / 2f, cd, cd),
                     Enabled ? (a > 0.5f ? Color.White : Theme.Accent) : Theme.TextFaint);
             }
         }
@@ -280,7 +286,7 @@ namespace WindowTool
             {
                 var rf = new RectangleF(0, 0, menu.Width, menu.Height);
                 using (var glow = new LinearGradientBrush(rf,
-                    Theme.Alpha(Color.White, Theme.IsDark ? 14 : 70),
+                    Theme.Alpha(Color.White, Theme.IsDark ? 8 : 26),
                     Theme.Alpha(Color.White, 0), 90f))
                 {
                     g.SetClip(p);
@@ -288,7 +294,7 @@ namespace WindowTool
                     g.ResetClip();
                 }
                 // 描边固定 1 物理像素：按 DPI 放大到 2px 会让左边缘看起来像一排小方块
-                Theme.StrokePath(g, p, Theme.Alpha(Theme.Text, Theme.IsDark ? 52 : 38), 1f);
+                Theme.StrokePath(g, p, Theme.Alpha(Theme.Text, Theme.IsDark ? 46 : 30), 1f);
             }
         }
 

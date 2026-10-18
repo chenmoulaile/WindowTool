@@ -69,6 +69,7 @@ namespace WindowTool
             t.Apply = apply;
             t.Done = done;
             live.Add(t);
+            BeginHiRes();
             EnsureClock();
             try { t.Apply(0f); } catch (Exception ex) { Program.Log(ex); live.Remove(t); }
         }
@@ -76,13 +77,14 @@ namespace WindowTool
         public static void Cancel(object tag)
         {
             for (int i = live.Count - 1; i >= 0; i--) if (ReferenceEquals(live[i].Tag, tag)) live.RemoveAt(i);
-            if (live.Count == 0 && clock != null) clock.Stop();
+            if (live.Count == 0) { if (clock != null) clock.Stop(); EndHiRes(); }
         }
 
         public static void StopAll()
         {
             live.Clear();
             if (clock != null) clock.Stop();
+            EndHiRes();
         }
 
         static void EnsureClock()
@@ -150,7 +152,11 @@ namespace WindowTool
                     if (t.Done != null) { try { t.Done(); } catch (Exception ex) { Program.Log(ex); } }
                 }
             }
-            if (live.Count == 0 && clock != null) clock.Stop();
+            if (live.Count == 0)
+            {
+                if (clock != null) clock.Stop();
+                EndHiRes();
+            }
         }
 
         public static float Curve(Ease kind, float t)
@@ -184,6 +190,28 @@ namespace WindowTool
         // ---------------- 系统偏好 ----------------
 
         const int SPI_GETCLIENTAREAANIMATION = 0x1048;
+
+        [DllImport("winmm.dll")]
+        static extern uint timeBeginPeriod(uint ms);
+        [DllImport("winmm.dll")]
+        static extern uint timeEndPeriod(uint ms);
+        static bool hiRes;
+
+        /// Windows 默认时钟粒度 15.6ms：Sleep(1) 实际睡 15ms，动画必然踩在 16/31ms 两档上。
+        /// 只在有补间在跑时提精度，跑完立刻还回去，不长期影响整机功耗。
+        static void BeginHiRes()
+        {
+            if (hiRes) return;
+            hiRes = true;
+            try { timeBeginPeriod(1); } catch { hiRes = false; }
+        }
+
+        static void EndHiRes()
+        {
+            if (!hiRes) return;
+            hiRes = false;
+            try { timeEndPeriod(1); } catch { }
+        }
 
         [DllImport("user32.dll", SetLastError = true)]
         static extern bool SystemParametersInfo(int action, uint param, ref bool v, uint flags);

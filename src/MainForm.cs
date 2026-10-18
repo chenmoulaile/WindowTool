@@ -33,6 +33,7 @@ namespace WindowTool
 
         MacSidebar sidebar;
         Panel pageHost;
+        SnapLayer slide;
         MacToast toast;
         readonly Dictionary<string, Page> pages = new Dictionary<string, Page>();
         Page current;
@@ -165,6 +166,9 @@ namespace WindowTool
             pageHost.BackColor = Theme.Window;
             Controls.Add(pageHost);
 
+            slide = new SnapLayer();
+            pageHost.Controls.Add(slide);
+
             toast = new MacToast();
             Controls.Add(toast);
 
@@ -259,31 +263,47 @@ namespace WindowTool
             if (!pages.TryGetValue(key, out p)) { key = "window"; p = pages["window"]; }
             if (current == p && !force) return;
             int prev = sidebar == null ? 0 : sidebar.SelectedIndex;
-            if (current != null) current.OnHide();
+            int idx = 0;
+            for (int i = 0; i < sidebar.Items.Count; i++) if (sidebar.Items[i].Key == key) idx = i;
+            Page old = current;
+
+            // 转场靠位图合成：整页重绘 17.9ms/帧，逐帧移动必然掉帧；
+            // 截两张图后每帧只 blit（0.7ms/张）。
+            bool animate = !force && Motion.Enabled && !DesignRender && slide != null &&
+                old != null && old != p && old.Visible;
+            Bitmap oldSnap = animate ? SnapLayer.Grab(old) : null;
+
+            if (old != null) old.OnHide();
             current = p;
             currentPageKey = key;
             foreach (var kv in pages) kv.Value.Visible = kv.Value == p;
-            int idx = 0;
-            for (int i = 0; i < sidebar.Items.Count; i++) if (sidebar.Items[i].Key == key) idx = i;
             if (force) sidebar.SetSelectedSilent(idx);
             else if (sidebar.SelectedIndex != idx) sidebar.SelectedIndex = idx;
             LayoutShell();
             p.OnShow();
             p.Tick();          // 立刻回填内容，不等 500ms 定时器
+
+            if (animate)
+            {
+                p.Update();
+                slide.Play(PageRect(), oldSnap, SnapLayer.Grab(p), idx >= prev ? -1 : 1);
+            }
+            else if (oldSnap != null) oldSnap.Dispose();
+
             if (!loading) Save();
-            if (force) { titleDx = 0; }
+            if (force) titleDx = 0;
             else AnimateTitle(idx >= prev ? 1 : -1);
             Invalidate();
         }
 
-        /// 页面内容瞬时切换（整页重绘 20ms，做逐帧位移必然掉帧），
-        /// 动感放在标题带上：只脏 1760x88 的一条，单帧约 1ms，能稳在 60fps。
+        /// 页面内容瞬时切换（整页重绘 18ms，逐帧位移必然掉帧），
+        /// 标题带跟着滑一下：只脏 1760x88 的一条，单帧约 1ms。
         void AnimateTitle(int dir)
         {
             if (!Motion.Enabled) { titleDx = 0; Invalidate(TitleBandRect()); return; }
             int from = Theme.S(16) * dir;
             titleDx = from;
-            Motion.To(titleTag, 220, Ease.Out, delegate(float t)
+            Motion.To(titleTag, 250, Ease.Out, delegate(float t)
             {
                 titleDx = (int)Math.Round(from * (1f - t));
                 Invalidate(TitleBandRect());
