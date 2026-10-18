@@ -4,6 +4,8 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Forms;
 
@@ -39,6 +41,7 @@ namespace WindowTool
             PresetCheck();
 
             if (argv.Length > 1 && argv[1] == "smoke") { Smoke(); return; }
+            if (argv.Length > 1 && argv[1] == "perf") { Perf(); return; }
             MenuShot(dir);
 
             MainForm.DesignRender = true;
@@ -103,7 +106,7 @@ namespace WindowTool
                 if (i == 50) f.SelectPage("env", false);
                 if (i == 70) f.SelectPage("window", false);
             }
-            Console.WriteLine("SMOKE pages switched with animation, timers ran.");
+            Console.WriteLine("SMOKE pages switched (instant + title glide), timers ran.");
             f.Close();
             for (int i = 0; i < 10; i++) { Application.DoEvents(); Thread.Sleep(20); }
             long after = File.Exists(logPath) ? new FileInfo(logPath).Length : 0;
@@ -120,6 +123,135 @@ namespace WindowTool
             string p = Path.Combine(Path.GetTempPath(), name);
             File.WriteAllText(p, "0");
             return p;
+        }
+
+        // 帧成本体检：页面/侧栏整块重绘耗时 + 真动画的帧间隔分布
+        static void Perf()
+        {
+            MainForm.DesignRender = true;
+            var f = new MainForm();
+            f.StartPosition = FormStartPosition.Manual;
+            f.Location = new Point(-8000, -8000);
+            f.ShowInTaskbar = false;
+            f.CreateControl();
+            ShowWindow(f.Handle, SW_SHOWNOACTIVATE);
+            for (int i = 0; i < 12; i++) { Application.DoEvents(); Thread.Sleep(20); }
+
+            var bf = BindingFlags.NonPublic | BindingFlags.Instance;
+            var page = typeof(MainForm).GetField("current", bf).GetValue(f) as Page;
+            var side = typeof(MainForm).GetField("sidebar", bf).GetValue(f) as Control;
+            Console.WriteLine("PERF form=" + f.Width + "x" + f.Height + " page=" + page.Width + "x" + page.Height +
+                " sidebar=" + side.Width + "x" + side.Height + " scale=" + Theme.Scale + " motion=" + Motion.Enabled);
+
+            Cost("page", page);
+            Cost("sidebar", side);
+            var rowBand = new Rectangle(0, Theme.S(84) + Theme.S(52) * 2 - Theme.S(6),
+                side.Width, Theme.S(52) * 2 + Theme.S(16));
+            Console.WriteLine("PERF sidebar 2-rows paint=" + PaintClip(side, rowBand).ToString("0.0") + "ms");
+
+            // 真消息循环里量：Idle 泵 + 墙钟进度
+            int steps = 0; long span = 0;
+            var probe = new object();
+            var marks = new List<long>();
+            var sw = Stopwatch.StartNew();
+            Motion.To(probe, 300, Ease.Linear, delegate(float t) { steps++; marks.Add(sw.ElapsedMilliseconds); });
+            var shut = new System.Windows.Forms.Timer { Interval = 380 };
+            shut.Tick += delegate { shut.Stop(); span = sw.ElapsedMilliseconds; Application.ExitThread(); };
+            shut.Start();
+            Application.Run();
+            shut.Dispose();
+            Motion.Cancel(probe);
+            marks.Sort();
+            var gaps = new List<long>();
+            for (int i = 1; i < marks.Count; i++) gaps.Add(marks[i] - marks[i - 1]);
+            gaps.Sort();
+            Console.WriteLine("PERF motion real-loop steps=" + steps + " span=" + span + "ms" +
+                (gaps.Count > 0 ? " p50=" + gaps[gaps.Count / 2] + "ms max=" + gaps[gaps.Count - 1] + "ms" : ""));
+
+            var rw = typeof(MainForm).GetMethod("RefreshWindows", BindingFlags.Public | bf);
+            var sw2 = Stopwatch.StartNew();
+            for (int i = 0; i < 5; i++) rw.Invoke(f, null);
+            Console.WriteLine("PERF RefreshWindows avg=" + (sw2.ElapsedMilliseconds / 5.0).ToString("0.0") + "ms");
+
+            var mm = new MacMenu();
+            mm.AddItem("显示主界面", Glyph.Window, null);
+            mm.AddSep();
+            mm.AddItem("退出", Glyph.Power, MacTone.Danger, null);
+            mm.CreateControl();
+            int cw = mm.ClientSize.Width - mm.Padding.Horizontal;
+            Console.WriteLine("PERF menu " + mm.Width + "x" + mm.Height +
+                " itemW=" + mm.Items[0].Width + "," + mm.Items[2].Width +
+                " contentW=" + cw + " aligned=" + (mm.Items[0].Width == mm.Items[2].Width && mm.Items[0].Width <= cw));
+            mm.Dispose();
+
+            // 侧栏胶囊滑动：真实补间 + 只脏两行
+            var sw3 = Stopwatch.StartNew();
+            var sb = typeof(MainForm).GetField("sidebar", bf).GetValue(f) as MacSidebar;
+            sb.SelectedIndex = 3;
+            int lastInv = 0;
+            for (int i = 0; i < 40; i++)
+            {
+                Application.DoEvents();
+                Thread.Sleep(4);
+                if (i == 6) sidebarPaintSample = TimePaint(sb);
+            }
+            Console.WriteLine("PERF sidebar glide total=" + sw3.ElapsedMilliseconds + "ms samplePaint=" + sidebarPaintSample +
+                "ms (只脏两行时应远小于整栏)");
+            sb.SelectedIndex = 0;
+
+            ShowWindow(f.Handle, SW_HIDE);
+            f.Dispose();
+        }
+
+        static long sidebarPaintSample;
+
+        static long TimePaint(Control c)
+        {
+            var sw = Stopwatch.StartNew();
+            c.Invalidate();
+            c.Update();
+            return sw.ElapsedMilliseconds;
+        }
+
+        // 取多次里的最好值：DrawToBitmap 的噪声（GC/首次建 DC）比真实绘制还大
+        static void Cost(string label, Control c)
+        {
+            if (c == null) return;
+            using (var bmp = new Bitmap(Math.Max(1, c.Width), Math.Max(1, c.Height)))
+            {
+                var best = double.MaxValue;
+                for (int i = 0; i < 12; i++)
+                {
+                    var sw = Stopwatch.StartNew();
+                    c.DrawToBitmap(bmp, new Rectangle(0, 0, c.Width, c.Height));
+                    double ms = sw.Elapsed.TotalMilliseconds;
+                    if (ms < best) best = ms;
+                }
+                Console.WriteLine("PERF " + label + " paint=" + best.ToString("0.0") + "ms");
+            }
+        }
+
+        // 只画某一矩形区域（模拟局部重绘），直接调用 OnPaint
+        static double PaintClip(Control c, Rectangle clip)
+        {
+            var m = c.GetType().GetMethod("OnPaint", BindingFlags.NonPublic | BindingFlags.Instance);
+            if (m == null) return -1;
+            using (var bmp = new Bitmap(clip.Width, clip.Height))
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.TranslateTransform(-clip.X, -clip.Y);
+                var args = new PaintEventArgs(g, clip);
+                m.Invoke(c, new object[] { args });
+                double best = double.MaxValue;
+                for (int i = 0; i < 12; i++)
+                {
+                    var sw = Stopwatch.StartNew();
+                    m.Invoke(c, new object[] { args });
+                    double ms = sw.Elapsed.TotalMilliseconds;
+                    if (ms < best) best = ms;
+                }
+                return best;
+            }
         }
 
         static void StartTimers(MainForm f)

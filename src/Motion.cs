@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace WindowTool
@@ -23,15 +25,23 @@ namespace WindowTool
         sealed class Tween
         {
             public object Tag;
-            public int Elapsed;
+            public long StartMs;
             public int Total;
             public Ease Curve;
             public Action<float> Apply;
             public Action Done;
         }
 
+        const int TargetFrameMs = 16;     // 62.5fps
+
         static readonly List<Tween> live = new List<Tween>();
-        static Timer clock;
+        static readonly Stopwatch wall = Stopwatch.StartNew();
+        static System.Windows.Forms.Timer clock;
+        static bool pumping;
+        static long lastFrameMs;
+
+        /// 有动画在跑。耗时的周期任务可以据此让路，避免和动画抢同一帧。
+        public static bool Busy { get { return live.Count > 0; } }
 
         public static void To(object tag, int ms, Ease curve, Action<float> apply)
         {
@@ -52,6 +62,8 @@ namespace WindowTool
                 if (ReferenceEquals(live[i].Tag, tag)) live.RemoveAt(i);
             var t = new Tween();
             t.Tag = tag;
+            t.StartMs = wall.ElapsedMilliseconds;
+            lastFrameMs = t.StartMs;
             t.Total = ms;
             t.Curve = curve;
             t.Apply = apply;
@@ -75,13 +87,47 @@ namespace WindowTool
 
         static void EnsureClock()
         {
+            // 双通道：WM_TIMER 兜底（模态循环里也能走），Idle 泵负责真正的帧率。
+            // WM_TIMER 的粒度是 15.6ms，Win11 对后台窗口还会再压到 20~30ms，
+            // 只靠它做动画一定是一顿一顿的。
             if (clock == null)
             {
-                clock = new Timer();
+                clock = new System.Windows.Forms.Timer();
                 clock.Interval = FrameMs;
                 clock.Tick += delegate { Step(); };
             }
             if (!clock.Enabled) clock.Start();
+            if (!idleHooked)
+            {
+                idleHooked = true;
+                Application.Idle += OnIdle;
+            }
+            lastFrameMs = wall.ElapsedMilliseconds;
+        }
+
+        static bool idleHooked;
+
+        /// 消息队列一空就以 1ms 粒度推进补间：每次推进后 DoEvents 让重绘发生，
+        /// 再按墙钟补足到下一帧，避免空转烧 CPU。
+        static void OnIdle(object sender, EventArgs e)
+        {
+            if (pumping || live.Count == 0) return;
+            pumping = true;
+            try
+            {
+                while (live.Count > 0)
+                {
+                    Step();
+                    Application.DoEvents();
+                    long now = wall.ElapsedMilliseconds;
+                    int wait = TargetFrameMs - (int)(now - lastFrameMs);
+                    if (wait > 1) Thread.Sleep(wait);
+                    else Thread.Sleep(1);
+                    lastFrameMs = wall.ElapsedMilliseconds;
+                }
+            }
+            catch (Exception ex) { Program.Log(ex); }
+            finally { pumping = false; }
         }
 
         static void Step()
@@ -92,8 +138,9 @@ namespace WindowTool
             {
                 if (i >= live.Count) continue;
                 var t = live[i];
-                t.Elapsed += FrameMs;
-                float p = t.Elapsed >= t.Total ? 1f : (float)t.Elapsed / (float)t.Total;
+                // 按真实时间推进而不是数帧：掉一两帧只会跳一下，不会把整段动画拖长
+                float p = (float)(wall.ElapsedMilliseconds - t.StartMs) / (float)t.Total;
+                if (p > 1f) p = 1f;
                 bool last = p >= 1f;
                 try { t.Apply(Curve(t.Curve, p)); }
                 catch (Exception ex) { Program.Log(ex); live.Remove(t); continue; }

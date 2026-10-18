@@ -37,6 +37,8 @@ namespace WindowTool
         readonly Dictionary<string, Page> pages = new Dictionary<string, Page>();
         Page current;
         string currentPageKey = "";
+        int titleDx;
+        readonly object titleTag = new object();
 
         Settings cfg;
         public Settings Cfg { get { return cfg; } }
@@ -200,7 +202,6 @@ namespace WindowTool
             pageHost.Controls.Add(p);
             p.Build();
             p.Visible = false;
-            p.SlideChanged = delegate { Invalidate(); };
             p.Place(PageRect());
         }
 
@@ -246,7 +247,7 @@ namespace WindowTool
         protected override void OnChromePaint(Graphics g)
         {
             if (current == null) return;
-            int x = Theme.S(230) + Theme.S(22) + current.SlideDx;
+            int x = Theme.S(230) + Theme.S(22) + titleDx;
             MacUi.LeftText(g, current.Title, Theme.FontTitle,
                 new RectangleF(x, Theme.S(11), ClientSize.Width - x - Theme.S(24), Theme.S(24)), Theme.Text);
 
@@ -269,9 +270,29 @@ namespace WindowTool
             LayoutShell();
             p.OnShow();
             p.Tick();          // 立刻回填内容，不等 500ms 定时器
-            if (!force) p.SlideIn(idx >= prev ? 1 : -1);
             if (!loading) Save();
+            if (force) { titleDx = 0; }
+            else AnimateTitle(idx >= prev ? 1 : -1);
             Invalidate();
+        }
+
+        /// 页面内容瞬时切换（整页重绘 20ms，做逐帧位移必然掉帧），
+        /// 动感放在标题带上：只脏 1760x88 的一条，单帧约 1ms，能稳在 60fps。
+        void AnimateTitle(int dir)
+        {
+            if (!Motion.Enabled) { titleDx = 0; Invalidate(TitleBandRect()); return; }
+            int from = Theme.S(16) * dir;
+            titleDx = from;
+            Motion.To(titleTag, 220, Ease.Out, delegate(float t)
+            {
+                titleDx = (int)Math.Round(from * (1f - t));
+                Invalidate(TitleBandRect());
+            });
+        }
+
+        Rectangle TitleBandRect()
+        {
+            return new Rectangle(Theme.S(230), 0, Math.Max(1, ClientSize.Width - Theme.S(230)), TitleBand);
         }
 
         // ---------------- 提示 ----------------
@@ -623,7 +644,8 @@ namespace WindowTool
                 }
                 TryRestoreBackgrounds();
                 foreach (var kv in pages) { }
-                if (current != null) current.Tick();
+                // 动画期间让路：页面同步要遍历控件与窗口状态，和补间抢同一帧会掉帧
+                if (!Motion.Busy && current != null) current.Tick();
                 if (mini != null && miniVisible) mini.Repaint();
             }
             catch (Exception ex) { Program.Log(ex); }

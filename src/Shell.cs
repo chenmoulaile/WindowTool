@@ -274,6 +274,8 @@ namespace WindowTool
         readonly List<SidebarItem> items = new List<SidebarItem>();
         int sel, hover = -1;
         float pillPos;            // 连续行号：胶囊滑动的实际位置
+        Rectangle pillDirty;      // 上一帧胶囊覆盖的区域，用于局部重绘
+        readonly Dictionary<string, Bitmap> tileCache = new Dictionary<string, Bitmap>();
         readonly HoverFade hoverFade;
         readonly object pillTag = new object();
         public event EventHandler SelectedIndexChanged;
@@ -293,6 +295,8 @@ namespace WindowTool
         {
             Width = Theme.S(230);
             Font = Theme.FontUi;
+            foreach (var b in tileCache.Values) b.Dispose();
+            tileCache.Clear();
             Invalidate();
         }
 
@@ -322,16 +326,29 @@ namespace WindowTool
             Invalidate();
         }
 
+        Rectangle RowUnion(int h)
+        {
+            var r = RowRect(h);
+            r.Inflate(Theme.S(2), Theme.S(2));
+            return r;
+        }
+
         void GlidePill(int target)
         {
             float from = pillPos;
-            if (Math.Abs(target - from) < 0.01f) { pillPos = target; return; }
-            int ms = 230 + (int)Math.Min(90, Math.Abs(target - from) * 45);
+            if (Math.Abs(target - from) < 0.01f) { pillPos = target; pillDirty = PillRect(target); return; }
+            int ms = 220 + (int)Math.Min(80, Math.Abs(target - from) * 40);
+            pillDirty = PillRect(from);
             Motion.To(pillTag, ms, Ease.Spring, delegate(float t)
             {
                 pillPos = from + (target - from) * t;
-                Invalidate();
-            });
+                var now = PillRect(pillPos);
+                // 只脏胶囊扫过的两行：整栏 460x1208 重绘要 7.5ms，局部约 1ms
+                var dirty = Rectangle.Union(pillDirty, now);
+                dirty.Inflate(Theme.S(2), Theme.S(2));
+                Invalidate(dirty);
+                pillDirty = now;
+            }, delegate { Invalidate(pillDirty); });
         }
 
         public SidebarItem Selected { get { return sel >= 0 && sel < items.Count ? items[sel] : null; } }
@@ -366,6 +383,7 @@ namespace WindowTool
             {
                 hover = h;
                 hoverFade.To(h >= 0 && h != sel ? 1f : 0f, h >= 0 ? 140 : 110);
+                Invalidate(RowUnion(h));
                 Invalidate();
             }
             base.OnMouseMove(e);
@@ -430,12 +448,9 @@ namespace WindowTool
                 float w = Weight(i);
                 bool isSel = w > 0.5f;
 
-                int tile = Theme.S(26);
+                int tile = Theme.S(26), pad = Theme.S(3);
                 var tr = new Rectangle(r.X + Theme.S(9), r.Y + (r.Height - tile) / 2, tile, tile);
-                DrawTile(g, tr, it.Tile, w, isSel);
-                float isz = tile * 0.6f;
-                Icons.Draw(g, it.Icon, new RectangleF(tr.X + (tile - isz) / 2f, tr.Y + (tile - isz) / 2f, isz, isz),
-                    Color.White);
+                g.DrawImage(TileBitmap(it, isSel), tr.X - pad, tr.Y - pad);
 
                 Color tc = Blend(Theme.Text, Theme.OnAccent, w);
                 Color sc = Blend(Theme.TextDim, Color.FromArgb(205, 255, 255, 255), w);
@@ -468,15 +483,40 @@ namespace WindowTool
                 (int)(a.B + (b.B - a.B) * t));
         }
 
+        /// 图标块缓存：渐变+投影+内高光每帧重算太贵，按 (主题, 选中, 颜色, 图标) 缓存成位图，
+        /// 每帧只做一次 DrawImage。密码就是 DPI 也拼进 key，换 DPI 会重建。
+        Bitmap TileBitmap(SidebarItem it, bool sel)
+        {
+            string key = (Theme.IsDark ? "d" : "l") + (sel ? "1" : "0") + it.Tile.ToArgb() + "|" +
+                (int)it.Icon + "|" + Theme.Scale;
+            Bitmap b;
+            if (tileCache.TryGetValue(key, out b)) return b;
+            int tile = Theme.S(26), pad = Theme.S(3);
+            b = new Bitmap(tile + pad * 2, tile + pad * 2,
+                System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            using (var g = Graphics.FromImage(b))
+            {
+                Theme.Hint(g);
+                g.Clear(Color.Transparent);
+                g.TranslateTransform(pad, pad);
+                DrawTileShape(g, new Rectangle(0, 0, tile, tile), it.Tile, sel);
+                float isz = tile * 0.6f;
+                Icons.Draw(g, it.Icon, new RectangleF((tile - isz) / 2f, (tile - isz) / 2f, isz, isz),
+                    Color.White);
+            }
+            tileCache[key] = b;
+            return b;
+        }
+
         /// 图标块：上亮下暗的渐变 + 顶部内高光 + 落地投影，选中时整体提亮一档。
-        void DrawTile(Graphics g, Rectangle r, Color baseColor, float w, bool isSel)
+        void DrawTileShape(Graphics g, Rectangle r, Color baseColor, bool isSel)
         {
             Color top = Theme.Lighten(baseColor, 0.22f);
             Color bottom = Theme.Darken(baseColor, 0.14f);
             if (isSel)
             {
-                top = Blend(top, Color.FromArgb(74, 255, 255, 255), 0.55f * w);
-                bottom = Blend(bottom, Color.FromArgb(40, 255, 255, 255), 0.55f * w);
+                top = Theme.Blend(top, Color.FromArgb(74, 255, 255, 255), 0.55f);
+                bottom = Theme.Blend(bottom, Color.FromArgb(40, 255, 255, 255), 0.55f);
             }
             var rf = new RectangleF(r.X, r.Y, r.Width, r.Height);
             float rad = Theme.S(7);
@@ -487,7 +527,8 @@ namespace WindowTool
                 Theme.FillGradient(g, p, rf, top, bottom);
                 Theme.StrokePath(g, p, Theme.Alpha(Color.Black, 26), Math.Max(1f, Theme.S(1) * 0.9f));
             }
-            using (var hi = Theme.RoundRectSidesF(new RectangleF(rf.X + 1f, rf.Y + 1f, rf.Width - 2f, rf.Height * 0.5f),
+            using (var hi = Theme.RoundRectSidesF(
+                new RectangleF(rf.X + 1f, rf.Y + 1f, rf.Width - 2f, rf.Height * 0.5f),
                 rad - 1f, true, false))
             using (var b = new SolidBrush(Theme.Alpha(Color.White, 44)))
                 g.FillPath(b, hi);
@@ -501,14 +542,7 @@ namespace WindowTool
         protected readonly MacScrollPanel scroll = new MacScrollPanel();
         readonly List<CardSpec> specs = new List<CardSpec>();
         readonly List<Action> tickers = new List<Action>();
-        readonly object slideTag = new object();
         Rectangle hostRect;
-
-        /// 入场位移：由 Motion 逐帧改写，只移动面板本身，不重排卡片。
-        public int SlideDx;
-
-        /// 每帧通知宿主重绘标题带——标题要跟着页面一起滑，但页面本身画不到那条带子上。
-        public Action SlideChanged;
 
         public abstract string Key { get; }
         public abstract string Title { get; }
@@ -547,21 +581,7 @@ namespace WindowTool
 
         public void ApplyBounds()
         {
-            SetBounds(hostRect.X + SlideDx, hostRect.Y, hostRect.Width, hostRect.Height);
-        }
-
-        /// dir=+1 从右侧滑入，-1 从左侧；配合侧栏胶囊的滑动方向读起来才连贯。
-        public void SlideIn(int dir)
-        {
-            if (!Motion.Enabled) { SlideDx = 0; ApplyBounds(); return; }
-            int from = Theme.S(22) * dir;
-            SlideDx = from;
-            Motion.To(slideTag, 270, Ease.Out, delegate(float t)
-            {
-                SlideDx = (int)Math.Round(from * (1f - t));
-                ApplyBounds();
-                if (SlideChanged != null) SlideChanged();
-            }, delegate { SlideDx = 0; ApplyBounds(); });
+            SetBounds(hostRect.X, hostRect.Y, hostRect.Width, hostRect.Height);
         }
 
         public virtual void Tick()

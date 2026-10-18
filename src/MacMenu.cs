@@ -10,8 +10,6 @@ namespace WindowTool
     /// 靠渲染器画图标会静默失效，自己接管 Paint 才有确定的绘制路径。
     sealed class MacMenu : ContextMenuStrip
     {
-        readonly object revealTag = new object();
-        float reveal = 1f;
 
         /// 打开前回调：置顶列表、播放态随时变化，条目必须按当前状态重建。
         public Action OnRefresh;
@@ -51,19 +49,45 @@ namespace WindowTool
             }
         }
 
-        /// 每加一条都全量重排：分隔线的宽度要跟着最宽条目走，
-        /// 只在新建时算一次会让后面的条目把它撑窄。
-        void RelayoutAll()
+        /// 所有条目统一成最宽那条的宽度。
+        /// 之前每行按自己的文字定宽，于是胶囊有的长有的短、图标列也对不齐，
+        /// 而且最长的条目会顶出面板边界——这就是看到的"错位"。
+        void Fit()
         {
+            int content = 0;
             foreach (ToolStripItem it in Items)
             {
                 var m = it as MacMenuItem;
-                if (m != null) m.Relayout();
+                if (m == null) continue;
+                m.Relayout();                     // 分隔线的高度在这里才落定
+                if (!m.Line) content = Math.Max(content, m.NaturalWidth);
             }
+            if (content < Theme.S(150)) content = Theme.S(150);
+            foreach (ToolStripItem it in Items)
+            {
+                var m = it as MacMenuItem;
+                if (m != null) m.Width = content;
+            }
+            // 改条目宽度不会让 ToolStrip 自己重算外框：不显式定尺寸，
+            // 面板会停在上一次的宽度上，条目就被裁掉——看起来就是"错位"。
+            Padding = new Padding(Pad, Pad, Pad, Pad);
+            AutoSize = false;
+            Width = content + Pad * 2;
+            PerformLayout();
+            // 以显示区实际宽度为准：ToolStrip 内部还有自己的边距，
+            // 直接按 Width-Padding 算会让条目比可用区宽出一截。
+            int inner = Math.Max(Theme.S(80), DisplayRectangle.Width);
+            foreach (ToolStripItem it in Items)
+            {
+                var m = it as MacMenuItem;
+                if (m != null) m.Width = inner;
+            }
+            PerformLayout();
+            int bottom = 0;
+            foreach (ToolStripItem it in Items) bottom = Math.Max(bottom, it.Bounds.Bottom);
+            Height = bottom + Pad;
+            PerformLayout();
         }
-
-        /// 0→1 的展开进度，条目按序号错峰滑入。
-        public float Reveal { get { return reveal; } }
 
         public MacMenuItem AddItem(string text, Glyph icon, EventHandler onClick)
         {
@@ -74,7 +98,7 @@ namespace WindowTool
         {
             var it = new MacMenuItem(this, text, icon, tone, onClick);
             Items.Add(it);
-            RelayoutAll();
+            Fit();
             return it;
         }
 
@@ -86,20 +110,8 @@ namespace WindowTool
             s.Line = true;
             s.Enabled = false;
             Items.Add(s);
-            RelayoutAll();
+            Fit();
             return s;
-        }
-
-        public int LocalOffset(ToolStripItem item)
-        {
-            if (reveal >= 1f) return 0;
-            int idx = Items.IndexOf(item);
-            if (idx < 0) idx = 0;
-            float local = (reveal - idx * 0.07f) / 0.55f;
-            if (local < 0f) local = 0f;
-            if (local > 1f) local = 1f;
-            local = Motion.Curve(Ease.Out, local);
-            return (int)Math.Round((1f - local) * Theme.S(10));
         }
 
         protected override void OnOpening(System.ComponentModel.CancelEventArgs e)
@@ -109,26 +121,9 @@ namespace WindowTool
             BackColor = Surface();
             ForeColor = Theme.Text;
             Padding = new Padding(Pad, Pad, Pad + Theme.S(6), Pad);
-            RelayoutAll();
+            Fit();
             base.OnOpening(e);
             ApplyShape();
-            if (Motion.Enabled)
-            {
-                reveal = 0f;
-                Motion.To(revealTag, 200, Ease.Out, delegate(float t)
-                {
-                    reveal = t;
-                    Invalidate();
-                });
-            }
-            else reveal = 1f;
-        }
-
-        protected override void OnClosed(ToolStripDropDownClosedEventArgs e)
-        {
-            Motion.Cancel(revealTag);
-            reveal = 1f;
-            base.OnClosed(e);
         }
 
         /// 圆角靠窗口 Region 裁出来：菜单是独立 HWND，不能像普通控件那样画透明角。
@@ -193,14 +188,20 @@ namespace WindowTool
             Relayout();
         }
 
-        /// 宽度按文字实测：中文条目交给 AutoSize 会算窄，图标槽也得留出来。
+        /// 按文字实测的自然宽度（不含右对齐勾选的额外位置）。
+        public int NaturalWidth
+        {
+            get
+            {
+                int tw = TextRenderer.MeasureText(Text ?? "", menu.Font, Size.Empty,
+                    TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
+                return menu.Gutter + tw + Theme.S(30);
+            }
+        }
+
         public void Relayout()
         {
-            if (Line) { Height = Theme.S(11); Width = menu.LineWidth; return; }
-            Height = menu.RowH;
-            int tw = TextRenderer.MeasureText(Text ?? "", menu.Font, Size.Empty,
-                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
-            Width = menu.Gutter + tw + Theme.S(22);
+            Height = Line ? Theme.S(11) : menu.RowH;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -215,12 +216,12 @@ namespace WindowTool
                 return;
             }
 
-            int off = menu.LocalOffset(this);
+            const int off = 0;
             float a = fade.Value;
             if (a > 0.01f)
             {
-                var pill = new RectangleF(off, (Height - Theme.S(24)) / 2f,
-                    Width - off - Theme.S(3), Theme.S(24));
+                var pill = new RectangleF(0, (Height - Theme.S(24)) / 2f,
+                    Width - Theme.S(4), Theme.S(24));
                 Color basePill = Tone == MacTone.Danger ? Theme.Red : Theme.Accent;
                 Color c = Theme.Blend(Theme.Hover, basePill, a);
                 if (!Enabled) c = Theme.Alpha(Theme.Hover, (int)(160 * a));
@@ -242,11 +243,11 @@ namespace WindowTool
             }
 
             int d = Theme.S(16);
-            var box = new RectangleF(Theme.S(5) + off, (Height - d) / 2f, d, d);
+            var box = new RectangleF(Theme.S(6), (Height - d) / 2f, d, d);
             Icons.Draw(g, Icon, box, glyph);
 
             TextRenderer.DrawText(g, Text ?? "", menu.Font,
-                new Rectangle(menu.Gutter + off, 0, Math.Max(Theme.S(8), Width - menu.Gutter - off), Height), text,
+                new Rectangle(menu.Gutter, 0, Math.Max(Theme.S(8), Width - menu.Gutter - Theme.S(6)), Height), text,
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
                 TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
 
@@ -254,7 +255,7 @@ namespace WindowTool
             {
                 int cd = Theme.S(14);
                 Icons.Draw(g, Glyph.Check,
-                    new RectangleF(Width - cd - Theme.S(12) + off, (Height - cd) / 2f, cd, cd),
+                    new RectangleF(Width - cd - Theme.S(12), (Height - cd) / 2f, cd, cd),
                     Enabled ? (a > 0.5f ? Color.White : Theme.Accent) : Theme.TextFaint);
             }
         }
