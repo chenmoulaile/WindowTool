@@ -30,6 +30,12 @@ namespace WindowTool
             public Ease Curve;
             public Action<float> Apply;
             public Action Done;
+            // 跟随式补间用这一组
+            public int TauMs;
+            public long LastMs;
+            public Func<int> Get;
+            public Func<int> Want;
+            public Action<int> Set;
         }
 
         const int TargetFrameMs = 16;     // 62.5fps
@@ -140,8 +146,28 @@ namespace WindowTool
             {
                 if (i >= live.Count) continue;
                 var t = live[i];
+                long nowMs = wall.ElapsedMilliseconds;
+                if (t.Set != null)
+                {
+                    int dt = (int)(nowMs - t.LastMs);
+                    if (dt < 0) dt = 0;
+                    t.LastMs = nowMs;
+                    int c = t.Get(), want = t.Want();
+                    int diff = want - c;
+                    if (Math.Abs(diff) <= 1)
+                    {
+                        if (c != want) t.Set(want);
+                        live.Remove(t);
+                        if (t.Done != null) { try { t.Done(); } catch (Exception ex) { Program.Log(ex); } }
+                        continue;
+                    }
+                    float k = 1f - (float)Math.Exp(-(double)dt / (double)t.TauMs);
+                    t.Set(c + (int)Math.Round(diff * k));
+                    if (nowMs - t.StartMs >= t.Total) { t.Set(want); live.Remove(t); }
+                    continue;
+                }
                 // 按真实时间推进而不是数帧：掉一两帧只会跳一下，不会把整段动画拖长
-                float p = (float)(wall.ElapsedMilliseconds - t.StartMs) / (float)t.Total;
+                float p = (float)(nowMs - t.StartMs) / (float)t.Total;
                 if (p > 1f) p = 1f;
                 bool last = p >= 1f;
                 try { t.Apply(Curve(t.Curve, p)); }
@@ -157,6 +183,29 @@ namespace WindowTool
                 if (clock != null) clock.Stop();
                 EndHiRes();
             }
+        }
+
+        /// 跟随式收敛：每帧把 cur 朝 target 拉近一点，按真实时间衰减，与帧率无关。
+        /// 滚动用它而不是"每次滚轮事件重启一条补间"——重启会让速度反复归零，
+        /// 手感就是一格一格地跳。
+        public static void Chase(object tag, Func<int> cur, Func<int> target, Action<int> set, int tauMs)
+        {
+            if (cur == null || target == null || set == null) return;
+            if (!enabled) { set(target()); return; }
+            for (int i = live.Count - 1; i >= 0; i--) if (ReferenceEquals(live[i].Tag, tag)) live.RemoveAt(i);
+            var t = new Tween();
+            t.Tag = tag;
+            t.StartMs = wall.ElapsedMilliseconds;
+            t.Total = 4000;                       // 上限，收敛后自己结束
+            t.Curve = Ease.Linear;
+            t.TauMs = Math.Max(20, tauMs);
+            t.LastMs = t.StartMs;
+            t.Get = cur;
+            t.Want = target;
+            t.Set = set;
+            live.Add(t);
+            BeginHiRes();
+            EnsureClock();
         }
 
         public static float Curve(Ease kind, float t)

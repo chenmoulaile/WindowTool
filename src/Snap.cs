@@ -14,7 +14,7 @@ namespace WindowTool
         const int WS_EX_TRANSPARENT = 0x20;
 
         Bitmap incoming, outgoing;
-        int dx;
+        int dx, nx;
         readonly object tag = new object();
 
         public SnapLayer()
@@ -40,6 +40,7 @@ namespace WindowTool
         /// 截一张控件当前外观。控件必须已经排好版。
         public static Bitmap Grab(Control src)
         {
+            if (src == null || src.IsDisposed) return null;
             int w = src.Width, h = src.Height;
             if (w < 2 || h < 2) return null;
             try
@@ -65,12 +66,16 @@ namespace WindowTool
             SetBounds(area.X, area.Y, area.Width, area.Height);
             Visible = true;
             BringToFront();
-            dx = 0;
+            dx = 0; nx = 0;
             Invalidate();
-            int travel = Math.Min(area.Width, Theme.S(260)) * dir;
-            Motion.To(tag, 250, Ease.Out, delegate(float t)
+            // 双层视差：旧页整幅滑走，新页同时从另一侧 30% 处接上。
+            // 只动一层的话看起来像擦除，就是"半成品感"的来源。
+            int travel = area.Width;
+            int lead = (int)(travel * 0.30f);
+            Motion.To(tag, 280, Ease.InOut, delegate(float t)
             {
-                dx = (int)Math.Round(travel * t);
+                dx = (int)Math.Round(travel * t) * dir;
+                nx = (int)Math.Round(lead * (1f - t)) * -dir;
                 if (!IsDisposed) Invalidate();
             }, delegate { Release(); });
         }
@@ -87,7 +92,7 @@ namespace WindowTool
         {
             if (incoming == null) { e.Graphics.Clear(Theme.Window); return; }
             var g = e.Graphics;
-            g.DrawImageUnscaled(incoming, 0, 0);
+            g.DrawImageUnscaled(incoming, nx, 0);
             if (outgoing != null) g.DrawImageUnscaled(outgoing, dx, 0);
         }
     }

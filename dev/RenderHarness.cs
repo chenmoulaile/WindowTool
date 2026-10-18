@@ -143,6 +143,22 @@ namespace WindowTool
             Console.WriteLine("PERF form=" + f.Width + "x" + f.Height + " page=" + page.Width + "x" + page.Height +
                 " sidebar=" + side.Width + "x" + side.Height + " scale=" + Theme.Scale + " motion=" + Motion.Enabled);
 
+            foreach (Control c in f.Controls)
+            {
+                var tl = c as TrafficLights;
+                if (tl == null) continue;
+                using (var one = new Bitmap(tl.Width, tl.Height))
+                {
+                    tl.DrawToBitmap(one, new Rectangle(0, 0, tl.Width, tl.Height));
+                    var mid = one.GetPixel(tl.Width / 2, tl.Height / 2);
+                    Console.WriteLine("PERF lights alone=" + mid + " handle=" + tl.IsHandleCreated +
+                        " created=" + tl.Created + " bounds=" + tl.Bounds);
+                }
+            }
+            var z = new System.Text.StringBuilder();
+            foreach (Control c in f.Controls)
+                z.Append(c.GetType().Name + "@" + c.Bounds + " vis=" + c.Visible + " | ");
+            Console.WriteLine("PERF zorder " + z);
             Cost("page", page);
             Cost("sidebar", side);
             Theme.ShadowQuality = 0;
@@ -682,6 +698,16 @@ namespace WindowTool
             using (var sub = new Bitmap(w, h, PixelFormat.Format32bppArgb))
             {
                 c.DrawToBitmap(sub, new Rectangle(0, 0, w, h));
+                // DrawToBitmap 按子控件索引正序合成，而 z-order 是索引 0 在最前：
+                // 红绿灯会被侧栏盖掉。按真实 z-order 倒序补画一遍最前的控件。
+                if (f != null)
+                    for (int zi = f.Controls.Count - 1; zi >= 0; zi--)
+                    {
+                        var kid = f.Controls[zi];
+                        if (!kid.Visible || kid is Form) continue;
+                        if (kid.Bounds.Width < 2 || kid.Bounds.Height < 2) continue;
+                        try { kid.DrawToBitmap(sub, kid.Bounds); } catch { }
+                    }
                 if (zoom == 1)
                 {
                     sub.Save(outPath, ImageFormat.Png);

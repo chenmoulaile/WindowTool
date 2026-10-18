@@ -171,6 +171,9 @@ namespace WindowTool
 
             toast = new MacToast();
             Controls.Add(toast);
+            // 红绿灯必须压过侧栏：DrawToBitmap 按创建顺序合成子窗口，
+            // 不显式置顶的话自绘截图里会被侧栏盖掉（实机 z-order 也一样不可靠）
+            foreach (Control c in Controls) if (c is TrafficLights) c.BringToFront();
 
             BuildMiniBar();
             LayoutShell();
@@ -224,7 +227,7 @@ namespace WindowTool
         void LayoutShell()
         {
             if (sidebar == null || pageHost == null) return;
-            int sbW = Theme.S(230);
+            int sbW = Theme.SidebarW;
             int band = TitleBand;
             sidebar.SetBounds(0, 0, sbW, ClientSize.Height);
 
@@ -251,9 +254,19 @@ namespace WindowTool
         protected override void OnChromePaint(Graphics g)
         {
             if (current == null) return;
-            int x = Theme.S(230) + Theme.S(22) + titleDx;
+            int x = Theme.SidebarW + Theme.S(22) + titleDx;
             MacUi.LeftText(g, current.Title, Theme.FontTitle,
                 new RectangleF(x, Theme.S(11), ClientSize.Width - x - Theme.S(24), Theme.S(24)), Theme.Text);
+            // 侧栏不再放副标题，说明文字挪到这里，页面仍然说得出自己是干什么的
+            var si = sidebar == null ? null : sidebar.Selected;
+            if (si != null && !string.IsNullOrEmpty(si.Subtitle))
+            {
+                int tw = TextRenderer.MeasureText(current.Title, Theme.FontTitle, Size.Empty,
+                    TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
+                MacUi.LeftText(g, si.Subtitle, Theme.FontSmall,
+                    new RectangleF(x + tw + Theme.S(10), Theme.S(15),
+                        ClientSize.Width - x - tw - Theme.S(40), Theme.S(18)), Theme.TextFaint);
+            }
 
         }
 
@@ -312,7 +325,7 @@ namespace WindowTool
 
         Rectangle TitleBandRect()
         {
-            return new Rectangle(Theme.S(230), 0, Math.Max(1, ClientSize.Width - Theme.S(230)), TitleBand);
+            return new Rectangle(Theme.SidebarW, 0, Math.Max(1, ClientSize.Width - Theme.SidebarW), TitleBand);
         }
 
         // ---------------- 提示 ----------------

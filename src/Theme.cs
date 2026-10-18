@@ -40,6 +40,7 @@ namespace WindowTool
         public static Font FontUiBold;
         public static Font FontSmall;
         public static Font FontSection;
+        public static Font FontGroup;
         public static Font FontTitle;
         public static Font FontMono;
 
@@ -59,6 +60,7 @@ namespace WindowTool
             FontUiBold = F(9.5f, FontStyle.Bold, k);
             FontSmall = F(8f, FontStyle.Regular, k);
             FontSection = F(9.5f, FontStyle.Bold, k);
+            FontGroup = F(8.5f, FontStyle.Bold, k);
             FontTitle = F(13f, FontStyle.Bold, k);
             FontMono = new Font("Consolas", 8.5f * k);
         }
@@ -77,6 +79,9 @@ namespace WindowTool
             }
             return new Font(FontFamily.GenericSansSerif, pt * k, style);
         }
+
+        /// 侧栏宽度只有一个来源：MainForm 排版、标题带起点都要跟它一致。
+        public static int SidebarW { get { return S(208); } }
 
         public static int S(int v) { return (int)Math.Round(v * Scale); }
         public static float S(float v) { return v * Scale; }

@@ -31,17 +31,15 @@ namespace WindowTool
             Invalidate();
         }
 
-        /// 与列表用同一套墙钟补间；按帧数收敛会让滚动随帧率忽快忽慢。
+        /// 只追目标、不重启补间：滚轮连按时重启会让速度反复归零，看起来一顿一顿。
         void Glide()
         {
-            int from = offset, to = target;
-            if (from == to) return;
-            int ms = Math.Min(300, 120 + Math.Abs(to - from) / 4);
-            Motion.To(glideTag, ms, Ease.Out, delegate(float t)
-            {
-                offset = from + (int)Math.Round((to - from) * t);
-                if (!IsDisposed) Apply();
-            }, delegate { offset = to; if (!IsDisposed) Apply(); });
+            Motion.Chase(glideTag, delegate { return offset; }, delegate { return target; },
+                delegate(int v)
+                {
+                    offset = v;
+                    if (!IsDisposed) Apply();
+                }, 70);
         }
 
         public void ScrollBy(int dy)

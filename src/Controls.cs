@@ -613,16 +613,18 @@ namespace WindowTool
             var g = e.Graphics;
             Theme.Hint(g);
             g.Clear(Theme.SolidBack(this));
-            int top = string.IsNullOrEmpty(title) ? 0 : Theme.S(24);
+            int top = string.IsNullOrEmpty(title) ? 0 : Theme.S(22);
             var r = new Rectangle(0, top, Width - 1, Height - top - 1);
             int rad = Theme.CornerRadius(r.Width, r.Height);
             using (var p = Theme.RoundRect(r, rad))
             {
                 Theme.FillPath(g, p, Theme.Card);
-                Theme.StrokePath(g, p, Theme.Border, Math.Max(1f, Theme.S(1)));
+                // 描边压淡：卡片靠"浮在底色上"分组，不靠一圈硬边框
+                Theme.StrokePath(g, p, Theme.Alpha(Theme.Border, Theme.IsDark ? 170 : 130), 1f);
             }
             if (!string.IsNullOrEmpty(title))
-                MacUi.LeftText(g, title, Theme.FontSection, new RectangleF(Theme.S(2), 0, Width - Theme.S(4), top), Theme.Text);
+                MacUi.LeftText(g, title, Theme.FontGroup,
+                    new RectangleF(Theme.S(3), 0, Width - Theme.S(6), top), Theme.TextDim);
         }
     }
 
@@ -639,10 +641,10 @@ namespace WindowTool
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
             BackColor = Color.Transparent;
-            Height = Theme.S(44);
+            Height = Theme.S(38);
         }
 
-        public int RowHeight { get { return string.IsNullOrEmpty(Subtitle) ? Theme.S(44) : Theme.S(58); } }
+        public int RowHeight { get { return string.IsNullOrEmpty(Subtitle) ? Theme.S(38) : Theme.S(48); } }
 
         public MacRow Trailing(params Control[] cs)
         {

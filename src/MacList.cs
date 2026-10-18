@@ -95,18 +95,16 @@ namespace WindowTool
         int BarW { get { return NeedsScroll ? Theme.S(6) : 0; } }
         int TopIndex { get { return rowH <= 0 ? 0 : scrollPx / rowH; } }
 
-        /// 按墙钟补间：原来每帧乘 0.32 是"按帧数"收敛，
-        /// 掉一帧动画就被拉长，快慢还随帧率变。
+        /// 跟随式收敛：滚轮连按时只更新目标，不重启补间。
+        /// 每次事件重启一条补间会把速度反复归零，手感就是"一格一格跳"。
         void Glide()
         {
-            int from = scrollPx, to = scrollTarget;
-            if (from == to) return;
-            int ms = Math.Min(280, 110 + Math.Abs(to - from) / 3);
-            Motion.To(scrollTag, ms, Ease.Out, delegate(float t)
-            {
-                scrollPx = from + (int)Math.Round((to - from) * t);
-                if (!IsDisposed) Invalidate();
-            }, delegate { scrollPx = to; if (!IsDisposed) Invalidate(); });
+            Motion.Chase(scrollTag, delegate { return scrollPx; }, delegate { return scrollTarget; },
+                delegate(int v)
+                {
+                    scrollPx = v;
+                    if (!IsDisposed) Invalidate();
+                }, 70);
         }
 
         void ScrollBy(int dy)

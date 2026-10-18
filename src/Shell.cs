@@ -268,14 +268,14 @@ namespace WindowTool
         public Color Tile = Theme.Accent;
     }
 
-    /// 侧栏导航：彩色圆角图标块 + 标题/副标题，选中胶囊在行间滑行。
+    /// 侧栏导航：小号线性图标 + 单行标题，选中项用淡色胶囊 + 左侧指示条。
+    /// 之前那种彩色圆角方块 + 双行文案在设置界面里显得笨重，像儿童向 mock。
     sealed class MacSidebar : Control, IThemed
     {
         readonly List<SidebarItem> items = new List<SidebarItem>();
         int sel, hover = -1;
         float pillPos;            // 连续行号：胶囊滑动的实际位置
-        Rectangle pillDirty;      // 上一帧胶囊覆盖的区域，用于局部重绘
-        readonly Dictionary<string, Bitmap> tileCache = new Dictionary<string, Bitmap>();
+        Rectangle pillDirty;
         readonly HoverFade hoverFade;
         readonly object pillTag = new object();
         public event EventHandler SelectedIndexChanged;
@@ -286,17 +286,15 @@ namespace WindowTool
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
                      ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.Selectable | ControlStyles.SupportsTransparentBackColor, true);
             BackColor = Color.Transparent;
-            Width = Theme.S(230);
+            Width = Theme.SidebarW;
             Font = Theme.FontUi;
             hoverFade = new HoverFade(this);
         }
 
         public void ApplyTheme()
         {
-            Width = Theme.S(230);
+            Width = Theme.SidebarW;
             Font = Theme.FontUi;
-            foreach (var b in tileCache.Values) b.Dispose();
-            tileCache.Clear();
             Invalidate();
         }
 
@@ -311,7 +309,6 @@ namespace WindowTool
                 if (v == sel) return;
                 sel = v;
                 GlidePill(v);
-                Invalidate();
                 var h = SelectedIndexChanged;
                 if (h != null) h(this, EventArgs.Empty);
             }
@@ -326,47 +323,36 @@ namespace WindowTool
             Invalidate();
         }
 
-        Rectangle RowUnion(int h)
-        {
-            var r = RowRect(h);
-            r.Inflate(Theme.S(2), Theme.S(2));
-            return r;
-        }
+        public SidebarItem Selected { get { return sel >= 0 && sel < items.Count ? items[sel] : null; } }
 
         void GlidePill(int target)
         {
             float from = pillPos;
             if (Math.Abs(target - from) < 0.01f) { pillPos = target; pillDirty = PillRect(target); return; }
-            int ms = 220 + (int)Math.Min(80, Math.Abs(target - from) * 40);
-            pillDirty = PillRect(from);
-            Motion.To(pillTag, ms, Ease.Spring, delegate(float t)
+            Motion.To(pillTag, 240, Ease.Out, delegate(float t)
             {
                 pillPos = from + (target - from) * t;
                 var now = PillRect(pillPos);
-                // 只脏胶囊扫过的两行：整栏 460x1208 重绘要 7.5ms，局部约 1ms
                 var dirty = Rectangle.Union(pillDirty, now);
-                dirty.Inflate(Theme.S(2), Theme.S(2));
+                dirty.Inflate(Theme.S(3), Theme.S(3));
                 Invalidate(dirty);
                 pillDirty = now;
             }, delegate { Invalidate(pillDirty); });
         }
 
-        public SidebarItem Selected { get { return sel >= 0 && sel < items.Count ? items[sel] : null; } }
-
-        int RowTop { get { return Theme.S(84); } }
-        int RowH { get { return Theme.S(52); } }
-        int RowGap { get { return Theme.S(4); } }
+        int RowTop { get { return Theme.S(78); } }
+        int RowH { get { return Theme.S(30); } }
+        int RowGap { get { return Theme.S(2); } }
+        int Pad { get { return Theme.S(8); } }
 
         Rectangle RowRect(int i)
         {
-            int pad = Theme.S(10);
-            return new Rectangle(pad, RowTop + i * (RowH + RowGap), Width - pad * 2, RowH);
+            return new Rectangle(Pad, RowTop + i * (RowH + RowGap), Width - Pad * 2, RowH);
         }
 
         Rectangle PillRect(float pos)
         {
-            int pad = Theme.S(10);
-            return new Rectangle(pad, RowTop + (int)Math.Round(pos * (RowH + RowGap)), Width - pad * 2, RowH);
+            return new Rectangle(Pad, RowTop + (int)Math.Round(pos * (RowH + RowGap)), Width - Pad * 2, RowH);
         }
 
         float Weight(int i)
@@ -381,19 +367,29 @@ namespace WindowTool
             for (int i = 0; i < items.Count; i++) if (RowRect(i).Contains(e.Location)) h = i;
             if (h != hover)
             {
+                int old = hover;
                 hover = h;
-                hoverFade.To(h >= 0 && h != sel ? 1f : 0f, h >= 0 ? 140 : 110);
-                Invalidate(RowUnion(h));
-                Invalidate();
+                hoverFade.To(h >= 0 && h != sel ? 1f : 0f, h >= 0 ? 130 : 110);
+                Invalidate(Band(old));
+                Invalidate(Band(h));
             }
             base.OnMouseMove(e);
         }
 
+        Rectangle Band(int i)
+        {
+            if (i < 0 || i >= items.Count) return Rectangle.Empty;
+            var r = RowRect(i);
+            r.Inflate(Theme.S(3), Theme.S(3));
+            return r;
+        }
+
         protected override void OnMouseLeave(EventArgs e)
         {
+            int old = hover;
             hover = -1;
             hoverFade.To(0f, 130);
-            Invalidate();
+            Invalidate(Band(old));
             base.OnMouseLeave(e);
         }
 
@@ -423,115 +419,42 @@ namespace WindowTool
 
             if (!string.IsNullOrEmpty(Header))
                 MacUi.LeftText(g, Header, Theme.FontTitle,
-                    new RectangleF(Theme.S(16), Theme.S(48), Width - Theme.S(32), Theme.S(28)), Theme.Text);
+                    new RectangleF(Theme.S(14), Theme.S(42), Width - Theme.S(28), Theme.S(26)), Theme.Text);
 
-            // 悬停胶囊先画：滑动胶囊要压在它上面
             if (hover >= 0 && hover != sel && hoverFade.Value > 0.01f)
             {
-                using (var p = Theme.RoundRect(RowRect(hover), Theme.S(9)))
+                using (var p = Theme.RoundRect(RowRect(hover), Theme.S(7)))
                     Theme.FillPath(g, p, Theme.Alpha(Theme.Hover, (int)(255 * hoverFade.Value)));
             }
-            if (items.Count > 0)
+            if (items.Count > 0 && sel >= 0)
             {
                 var pr = PillRect(pillPos);
-                using (var p = Theme.RoundRect(pr, Theme.S(9)))
-                {
-                    Theme.FillPath(g, p, Theme.Accent);
-                    Theme.StrokePath(g, p, Theme.Alpha(Color.Black, 20), Math.Max(1f, Theme.S(1)));
-                }
+                using (var p = Theme.RoundRect(pr, Theme.S(7)))
+                    Theme.FillPath(g, p, Theme.Alpha(Theme.Accent, Theme.IsDark ? 44 : 26));
+                // 左侧指示条：跟着胶囊一起滑
+                var bar = new RectangleF(Theme.S(3), pr.Y + pr.Height / 2f - Theme.S(8),
+                    Theme.S(3), Theme.S(16));
+                using (var p = Theme.RoundRectF(bar, Theme.S(1.5f)))
+                    Theme.FillPath(g, p, items[sel].Tile);
             }
 
+            int isz = Theme.S(15);
             for (int i = 0; i < items.Count; i++)
             {
                 var it = items[i];
                 var r = RowRect(i);
                 float w = Weight(i);
-                bool isSel = w > 0.5f;
+                bool on = w > 0.5f;
 
-                int tile = Theme.S(26), pad = Theme.S(3);
-                var tr = new Rectangle(r.X + Theme.S(9), r.Y + (r.Height - tile) / 2, tile, tile);
-                g.DrawImage(TileBitmap(it, isSel), tr.X - pad, tr.Y - pad);
+                var ib = new RectangleF(r.X + Theme.S(11), r.Y + (r.Height - isz) / 2f, isz, isz);
+                Icons.Draw(g, it.Icon, ib, on ? it.Tile : (i == hover ? Theme.Text : Theme.TextDim));
 
-                Color tc = Blend(Theme.Text, Theme.OnAccent, w);
-                Color sc = Blend(Theme.TextDim, Color.FromArgb(205, 255, 255, 255), w);
-                float tx = tr.Right + Theme.S(11);
-                bool two = !string.IsNullOrEmpty(it.Subtitle);
-                if (two)
-                {
-                    int tw = (int)(Width - tx) - Theme.S(10);
-                    MacUi.LeftText(g, Theme.Ellipsis(it.Title, Font, tw), Font,
-                        new RectangleF(tx, r.Y + Theme.S(6), tw, Theme.S(22)), tc);
-                    MacUi.LeftText(g, Theme.Ellipsis(it.Subtitle, Theme.FontSmall, tw), Theme.FontSmall,
-                        new RectangleF(tx, r.Y + Theme.S(29), tw, Theme.S(20)), sc);
-                }
-                else
-                {
-                    MacUi.LeftText(g, Theme.Ellipsis(it.Title, Font, Width - (int)tx - Theme.S(10)), Font,
-                        new RectangleF(tx, r.Y, Width - tx - Theme.S(10), r.Height), tc);
-                }
+                float tx = ib.Right + Theme.S(9);
+                int tw = r.Right - (int)tx - Theme.S(6);
+                Color tc = on ? Theme.Text : Theme.Blend(Theme.TextDim, Theme.Text, i == hover ? 0.55f : 0f);
+                MacUi.LeftText(g, Theme.Ellipsis(it.Title, Font, tw), Font,
+                    new RectangleF(tx, r.Y, tw, r.Height), tc);
             }
-        }
-
-        static Color Blend(Color a, Color b, float t)
-        {
-            if (t <= 0f) return a;
-            if (t >= 1f) return b;
-            return Color.FromArgb(
-                (int)(a.A + (b.A - a.A) * t),
-                (int)(a.R + (b.R - a.R) * t),
-                (int)(a.G + (b.G - a.G) * t),
-                (int)(a.B + (b.B - a.B) * t));
-        }
-
-        /// 图标块缓存：渐变+投影+内高光每帧重算太贵，按 (主题, 选中, 颜色, 图标) 缓存成位图，
-        /// 每帧只做一次 DrawImage。密码就是 DPI 也拼进 key，换 DPI 会重建。
-        Bitmap TileBitmap(SidebarItem it, bool sel)
-        {
-            string key = (Theme.IsDark ? "d" : "l") + (sel ? "1" : "0") + it.Tile.ToArgb() + "|" +
-                (int)it.Icon + "|" + Theme.Scale;
-            Bitmap b;
-            if (tileCache.TryGetValue(key, out b)) return b;
-            int tile = Theme.S(26), pad = Theme.S(3);
-            b = new Bitmap(tile + pad * 2, tile + pad * 2,
-                System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
-            using (var g = Graphics.FromImage(b))
-            {
-                Theme.Hint(g);
-                g.Clear(Color.Transparent);
-                g.TranslateTransform(pad, pad);
-                DrawTileShape(g, new Rectangle(0, 0, tile, tile), it.Tile, sel);
-                float isz = tile * 0.6f;
-                Icons.Draw(g, it.Icon, new RectangleF((tile - isz) / 2f, (tile - isz) / 2f, isz, isz),
-                    Color.White);
-            }
-            tileCache[key] = b;
-            return b;
-        }
-
-        /// 图标块：上亮下暗的渐变 + 顶部内高光 + 落地投影，选中时整体提亮一档。
-        void DrawTileShape(Graphics g, Rectangle r, Color baseColor, bool isSel)
-        {
-            Color top = Theme.Lighten(baseColor, 0.22f);
-            Color bottom = Theme.Darken(baseColor, 0.14f);
-            if (isSel)
-            {
-                top = Theme.Blend(top, Color.FromArgb(74, 255, 255, 255), 0.55f);
-                bottom = Theme.Blend(bottom, Color.FromArgb(40, 255, 255, 255), 0.55f);
-            }
-            var rf = new RectangleF(r.X, r.Y, r.Width, r.Height);
-            float rad = Theme.S(7);
-            using (var sh = Theme.RoundRectF(new RectangleF(r.X, r.Y + Theme.S(1.5f), r.Width, r.Height), rad))
-                Theme.FillPath(g, sh, Theme.Alpha(Color.Black, Theme.IsDark ? 60 : 34));
-            using (var p = Theme.RoundRectF(rf, rad))
-            {
-                Theme.FillGradient(g, p, rf, top, bottom);
-                Theme.StrokePath(g, p, Theme.Alpha(Color.Black, 26), Math.Max(1f, Theme.S(1) * 0.9f));
-            }
-            using (var hi = Theme.RoundRectSidesF(
-                new RectangleF(rf.X + 1f, rf.Y + 1f, rf.Width - 2f, rf.Height * 0.5f),
-                rad - 1f, true, false))
-            using (var b = new SolidBrush(Theme.Alpha(Color.White, 44)))
-                g.FillPath(b, hi);
         }
     }
 
@@ -643,7 +566,7 @@ namespace WindowTool
             int y = H(6);
             foreach (var s in specs)
             {
-                int top = s.Title.Length == 0 ? 0 : H(26);
+                int top = s.Title.Length == 0 ? 0 : H(22);
                 int body = H(10);
                 if (s.Rows.Count > 0)
                 {
@@ -663,7 +586,7 @@ namespace WindowTool
                     ry += r.RowHeight;
                 }
                 if (s.Rows.Count == 0 && s.Looser != null) s.Looser(s.Card, w);
-                y += h + H(14);
+                y += h + H(12);
             }
             scroll.SetContent(area.Width, y + H(6));
         }
