@@ -43,6 +43,7 @@ namespace WindowTool
         public static Font FontUi;
         public static Font FontUiMedium;
         public static Font FontUiBold;
+        public static Font FontMenu;     // 托盘菜单：比正文略大一号，行高跟着放宽
         public static Font FontSmall;
         public static Font FontSection;
         public static Font FontGroup;
@@ -63,6 +64,7 @@ namespace WindowTool
             FontUi = F(9f, FontStyle.Regular, k);
             FontUiMedium = F(9f, FontStyle.Bold, k);
             FontUiBold = F(9.5f, FontStyle.Bold, k);
+            FontMenu = F(9.5f, FontStyle.Regular, k);
             FontSmall = F(8f, FontStyle.Regular, k);
             FontSection = F(9.5f, FontStyle.Bold, k);
             FontGroup = F(8.5f, FontStyle.Bold, k);

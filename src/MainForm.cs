@@ -33,7 +33,6 @@ namespace WindowTool
 
         MacSidebar sidebar;
         Panel pageHost;
-        SnapLayer slide;
         MacToast toast;
         readonly Dictionary<string, Page> pages = new Dictionary<string, Page>();
         Page current;
@@ -166,9 +165,6 @@ namespace WindowTool
             pageHost.BackColor = Theme.Window;
             Controls.Add(pageHost);
 
-            slide = new SnapLayer();
-            pageHost.Controls.Add(slide);
-
             toast = new MacToast();
             Controls.Add(toast);
             // 红绿灯必须压过侧栏：DrawToBitmap 按创建顺序合成子窗口，
@@ -280,12 +276,6 @@ namespace WindowTool
             for (int i = 0; i < sidebar.Items.Count; i++) if (sidebar.Items[i].Key == key) idx = i;
             Page old = current;
 
-            // 转场靠位图合成：整页重绘 17.9ms/帧，逐帧移动必然掉帧；
-            // 截两张图后每帧只 blit（0.7ms/张）。
-            bool animate = !force && Motion.Enabled && !DesignRender && slide != null &&
-                old != null && old != p && old.Visible;
-            Bitmap oldSnap = animate ? SnapLayer.Grab(old) : null;
-
             if (old != null) old.OnHide();
             current = p;
             currentPageKey = key;
@@ -295,13 +285,6 @@ namespace WindowTool
             LayoutShell();
             p.OnShow();
             p.Tick();          // 立刻回填内容，不等 500ms 定时器
-
-            if (animate)
-            {
-                p.Update();
-                slide.Play(PageRect(), oldSnap, SnapLayer.Grab(p), idx >= prev ? -1 : 1);
-            }
-            else if (oldSnap != null) oldSnap.Dispose();
 
             if (!loading) Save();
             if (force) titleDx = 0;
