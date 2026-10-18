@@ -9,6 +9,7 @@ namespace WindowTool
     {
         readonly Panel canvas;
         int offset, target, contentH;
+        float phys, vel;
         readonly object glideTag = new object();
         readonly MacScrollBar bar = new MacScrollBar();
 
@@ -34,10 +35,12 @@ namespace WindowTool
         /// 只追目标、不重启补间：滚轮连按时重启会让速度反复归零，看起来一顿一顿。
         void Glide()
         {
+            phys = target;
+            vel = 0f;
             Motion.Chase(glideTag, delegate { return offset; }, delegate { return target; },
                 delegate(int v)
                 {
-                    offset = v;
+                    offset = v; phys = v;
                     if (!IsDisposed) Apply();
                 }, 70);
         }
@@ -47,6 +50,45 @@ namespace WindowTool
             if (!CanScroll) return;
             target = Math.Max(0, Math.Min(MaxOffset, target + dy));
             Glide();
+        }
+
+        /// 滚轮走惯性：事件只叠加速度，由一个物理循环统一推进。
+        /// 每格各起一段补间的话，连按时速度反复归零，就是"一卡一卡"。
+        public void Fling(int wheelDelta)
+        {
+            if (!CanScroll) return;
+            vel -= wheelDelta * 2.6f;
+            if (vel > 4200f) vel = 4200f;
+            if (vel < -4200f) vel = -4200f;
+            phys = offset;
+            Motion.Run(glideTag, FlingFrame, 3000);
+        }
+
+        bool FlingFrame(float dt)
+        {
+            float max = MaxOffset;
+            phys += vel * dt;
+            vel *= (float)Math.Exp(-dt * 6.2);
+            if (phys < 0f || phys > max)
+            {
+                float want = phys < 0f ? 0f : max;
+                phys += (want - phys) * (1f - (float)Math.Exp(-dt * 15f));
+                vel *= 0.45f;
+            }
+            int v = (int)Math.Round(phys);
+            bool moving = false;
+            if (v != offset) { offset = v; moving = true; }
+            float rest = phys < 0f ? 0f : (phys > max ? max : phys);
+            if (Math.Abs(vel) < 16f && Math.Abs(phys - rest) < 0.5f)
+            {
+                phys = rest;
+                offset = (int)Math.Round(rest);
+                target = offset;
+                Apply();
+                return false;
+            }
+            if (moving) Apply();
+            return true;
         }
 
         /// 内容画布：Panel.SetStyle 是受保护成员，必须由派生类自己开启自绘样式。
@@ -79,7 +121,7 @@ namespace WindowTool
         public void SetOffset(int v)
         {
             int nv = Math.Max(0, Math.Min(MaxOffset, v));
-            offset = nv; target = nv;
+            offset = nv; target = nv; phys = nv; vel = 0f;
             Motion.Cancel(glideTag);
             canvas.Top = -offset;
             bar.Invalidate();
@@ -90,8 +132,7 @@ namespace WindowTool
 
         protected override void OnMouseWheel(MouseEventArgs e)
         {
-            int per = Math.Max(Theme.S(40), Height / 12);
-            ScrollBy(e.Delta < 0 ? per : -per);
+            Fling(e.Delta);
             base.OnMouseWheel(e);
         }
 

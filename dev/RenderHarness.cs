@@ -569,29 +569,28 @@ namespace WindowTool
                 {
                     Theme.SetDark(mode == "dark");
                     var m = new MacMenu();
-                    m.AddItem("显示主界面", Glyph.Window, null);
-                    m.AddSep();
-                    m.AddItem("继续播放", Glyph.Play, null);
-                    m.AddItem("下一首", Glyph.Next, null);
-                    m.AddSep();
-                    m.AddItem("选择图片背景", Glyph.Picture, null);
-                    m.AddItem("选择视频背景", Glyph.Film, null);
-                    var off = m.AddItem("关闭桌面背景", Glyph.Close, null);
-                    off.Enabled = false;
-                    m.AddSep();
-                    m.AddItem("取消置顶「std.cpp - Sublime Text」", Glyph.PinSlash, null);
-                    m.AddItem("全部取消置顶（7 个）", Glyph.PinSlash, null);
-                    m.AddSep();
-                    var dm = m.AddItem("深色模式", Glyph.Moon, null); dm.Flag = mode == "dark";
-                    var ar = m.AddItem("开机自动运行", Glyph.Bolt, null); ar.Flag = true;
-                    m.AddSep();
-                    m.AddItem("退出", Glyph.Power, MacTone.Danger, null);
+                m.AddItem("显示主界面", Glyph.Window, null).Hint = "单击图标";
+                m.AddHeader("播放");
+                m.AddItem("继续播放", Glyph.Play, null).Hint = "Ctrl+Alt+P";
+                m.AddItem("下一首", Glyph.Next, null);
+                m.AddHeader("桌面背景");
+                m.AddItem("选择图片…", Glyph.Picture, null);
+                m.AddItem("选择视频…", Glyph.Film, null);
+                var off = m.AddItem("关闭背景", Glyph.Close, null);
+                off.Enabled = false;
+                m.AddHeader("已置顶 2 个");
+                m.AddItem("取消置顶「std.cpp - Sublime Text」", Glyph.PinSlash, null);
+                m.AddItem("全部取消置顶", Glyph.PinSlash, null).Hint = "Ctrl+Alt+6";
+                m.AddHeader("首选项");
+                var dm = m.AddItem("深色模式", Glyph.Moon, null); dm.Flag = mode == "dark";
+                var ar = m.AddItem("开机自动运行", Glyph.Bolt, null); ar.Flag = true;
+                var mo = m.AddItem("界面动画", Glyph.Enlarge, null); mo.Flag = true;
+                m.AddSep();
+                m.AddItem("退出", Glyph.Power, MacTone.Danger, null);
 
-                    // 强制一条进入悬停态：Select() 不会触发 MouseEnter，只能直接推 fade 值
-                    int pick = mode == "dark" ? m.Items.Count - 1 : 9;
                     m.CreateControl();
                     m.PerformLayout();
-                    var picked = m.Items[pick];
+                    var picked = m.Items[12];
                     var ff = picked.GetType().GetField("fade", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                     if (ff != null)
                     {
@@ -599,7 +598,7 @@ namespace WindowTool
                         hv.GetType().GetField("Value").SetValue(hv, 1f);
                         picked.Invalidate();
                     }
-                    else Console.WriteLine("MENU 找不到 fade 字段，悬停胶囊未验证");
+                    else Console.WriteLine("MENU no fade field");
                     for (int i = 0; i < 10; i++) { Application.DoEvents(); Thread.Sleep(20); }
                     int w = m.Width, h = m.Height;
                     if (w < 40 || h < 40) { Console.WriteLine("MENU size=" + w + "x" + h + " (太小，跳过)"); return; }

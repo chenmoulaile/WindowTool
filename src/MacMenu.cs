@@ -32,8 +32,9 @@ namespace WindowTool
 
         // macOS 菜单是紧凑的：行高 22、图标槽 22。之前 30 的行长得很"Windows 95"。
         public int Pad { get { return Theme.S(5); } }
-        public int RowH { get { return Theme.S(22); } }
-        public int Gutter { get { return Theme.S(22); } }
+        public int RowH { get { return Theme.S(20); } }
+        public int Gutter { get { return Theme.S(24); } }
+        public int HeadH { get { return Theme.S(17); } }
 
         /// 分隔线条目的宽度：与最宽条目对齐，靠 Layout 阶段回填。
         public int LineWidth
@@ -60,10 +61,10 @@ namespace WindowTool
             {
                 var m = it as MacMenuItem;
                 if (m == null) continue;
-                m.Relayout();                     // 分隔线的高度在这里才落定
+                m.Relayout();                     // 分隔线/小标题的高度在这里才落定
                 if (!m.Line) content = Math.Max(content, m.NaturalWidth);
             }
-            if (content < Theme.S(168)) content = Theme.S(168);
+            if (content < Theme.S(196)) content = Theme.S(196);
             foreach (ToolStripItem it in Items)
             {
                 var m = it as MacMenuItem;
@@ -98,6 +99,17 @@ namespace WindowTool
         public MacMenuItem AddItem(string text, Glyph icon, EventHandler onClick)
         {
             return AddItem(text, icon, MacTone.Normal, onClick);
+        }
+
+        /// 分组小标题：不可点，只负责把长菜单切成几段。
+        public MacMenuItem AddHeader(string text)
+        {
+            var h = new MacMenuItem(this, text, Glyph.Close, MacTone.Normal, null);
+            h.Header = true;
+            h.Enabled = false;
+            Items.Add(h);
+            Fit();
+            return h;
         }
 
         public MacMenuItem AddItem(string text, Glyph icon, MacTone tone, EventHandler onClick)
@@ -174,6 +186,8 @@ namespace WindowTool
         public MacTone Tone = MacTone.Normal;
         public bool Flag;
         public bool Line;
+        public bool Header;
+        public string Hint = "";
 
         public MacMenuItem(MacMenu menu, string text, Glyph icon, MacTone tone, EventHandler onClick)
             : base(text)
@@ -201,69 +215,86 @@ namespace WindowTool
             {
                 int tw = TextRenderer.MeasureText(Text ?? "", menu.Font, Size.Empty,
                     TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
-                return menu.Gutter + tw + Theme.S(34);
+                int hw = string.IsNullOrEmpty(Hint) ? 0 :
+                    TextRenderer.MeasureText(Hint, Theme.FontSmall, Size.Empty,
+                        TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width + Theme.S(22);
+                return menu.Gutter + tw + Theme.S(30) + hw;
             }
         }
 
         public void Relayout()
         {
-            Height = Line ? Theme.S(9) : menu.RowH;
+            Height = Line ? Theme.S(9) : (Header ? menu.HeadH : menu.RowH);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             var g = e.Graphics;
             Theme.Hint(g);
-            // 不要 Clear：面板顶部的渐隐柔光是宿主画的，条目一擦就断成一块块矩形
+            // 不 Clear：面板底色与描边由宿主画，条目一擦就把它断成一块块矩形
             if (Line)
             {
                 using (var pen = new Pen(Theme.Separator, Math.Max(1f, Theme.S(1))))
-                    g.DrawLine(pen, Theme.S(12), Height / 2, Math.Max(Theme.S(12), Width - Theme.S(10)), Height / 2);
+                    g.DrawLine(pen, Theme.S(10), Height / 2, Math.Max(Theme.S(10), Width - Theme.S(8)), Height / 2);
+                return;
+            }
+            if (Header)
+            {
+                MacUi.LeftText(g, Text ?? "", Theme.FontGroup,
+                    new RectangleF(Theme.S(11), 0, Width - Theme.S(18), Height), Theme.TextFaint);
                 return;
             }
 
-            const int off = 0;
             float a = fade.Value;
-            if (a > 0.01f)
+            Color hot = Tone == MacTone.Danger ? Theme.Red : Theme.Accent;
+            if (a > 0.01f && Enabled)
             {
-                var pill = new RectangleF(Theme.S(2), 1,
-                    Width - Theme.S(4), Height - 2);
-                Color basePill = Tone == MacTone.Danger ? Theme.Red : Theme.AccentFill;
-                Color c = Theme.Blend(Theme.Hover, basePill, a);
-                if (!Enabled) c = Theme.Alpha(Theme.Hover, (int)(160 * a));
+                // 软底 + 左侧强调条。整条刷成实心强调色的那种高亮块
+                // 在小菜单里非常突兀，是"廉价感"的主要来源。
+                var pill = new RectangleF(Theme.S(3), 1, Width - Theme.S(6), Height - 2);
                 using (var p = Theme.RoundRectF(pill, Theme.S(5)))
-                {
-                    Theme.FillPath(g, p, c);
-                    if (a > 0.5f)
-                        Theme.StrokePath(g, p, Theme.Alpha(Color.Black, (int)(22 * a)), Math.Max(1f, Theme.S(1)));
-                }
+                    Theme.FillPath(g, p, Theme.Alpha(hot, (int)((Theme.IsDark ? 54 : 32) * a)));
+                var bar = new RectangleF(Theme.S(2), pill.Y + pill.Height * 0.24f,
+                    Theme.S(2), pill.Height * 0.52f);
+                using (var p = Theme.RoundRectF(bar, Theme.S(1)))
+                    Theme.FillPath(g, p, Theme.Alpha(hot, (int)(230 * a)));
             }
 
-            Color glyph = !Enabled ? Theme.TextFaint : Theme.TextDim;
             Color text = !Enabled ? Theme.TextFaint : Theme.Text;
-            if (a > 0.01f)
+            Color glyph = !Enabled ? Theme.TextFaint : Theme.TextDim;
+            if (a > 0.01f && Enabled)
             {
-                Color on = Enabled ? Color.White : Theme.TextFaint;
-                glyph = Theme.Blend(glyph, on, a);
-                text = Theme.Blend(text, on, a);
+                text = Theme.Blend(text, hot, a);
+                glyph = Theme.Blend(glyph, hot, a);
             }
 
-            int d = Theme.S(13);
-            var box = new RectangleF(Theme.S(5), (Height - d) / 2f, d, d);
-            Icons.Draw(g, Icon, box, glyph);
+            int d = Theme.S(12);
+            Icons.Draw(g, Icon, new RectangleF(Theme.S(8), (Height - d) / 2f, d, d), glyph);
 
-            TextRenderer.DrawText(g, Text ?? "", menu.Font,
-                new Rectangle(menu.Gutter, 0, Math.Max(Theme.S(8), Width - menu.Gutter - Theme.S(6)), Height), text,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
-
+            int right = Width - Theme.S(8);
             if (Flag)
             {
                 int cd = Theme.S(12);
                 Icons.Draw(g, Glyph.Check,
-                    new RectangleF(Width - cd - Theme.S(8), (Height - cd) / 2f, cd, cd),
-                    Enabled ? (a > 0.5f ? Color.White : Theme.Accent) : Theme.TextFaint);
+                    new RectangleF(right - cd, (Height - cd) / 2f, cd, cd),
+                    Enabled ? Theme.Accent : Theme.TextFaint);
+                right -= cd + Theme.S(8);
             }
+            if (!string.IsNullOrEmpty(Hint))
+            {
+                int hw = TextRenderer.MeasureText(Hint, Theme.FontSmall, Size.Empty,
+                    TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
+                TextRenderer.DrawText(g, Hint, Theme.FontSmall,
+                    new Rectangle(right - hw, 0, hw + 2, Height),
+                    Enabled ? Theme.TextFaint : Theme.Alpha(Theme.TextFaint, 120),
+                    TextFormatFlags.Right | TextFormatFlags.VerticalCenter |
+                    TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+            }
+
+            TextRenderer.DrawText(g, Text ?? "", menu.Font,
+                new Rectangle(menu.Gutter, 0, Math.Max(Theme.S(8), right - menu.Gutter - Theme.S(6)), Height), text,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
+                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
         }
     }
 

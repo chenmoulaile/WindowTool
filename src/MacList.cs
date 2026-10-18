@@ -27,6 +27,7 @@ namespace WindowTool
         readonly List<MacListItem> items = new List<MacListItem>();
         int sel = -1, hover = -1;
         int scrollPx, scrollTarget;
+        float phys, vel;
         int rowH;
         bool draggingBar;
         float dragGrab;
@@ -119,6 +120,7 @@ namespace WindowTool
         {
             scrollPx = ClampPx(scrollPx);
             scrollTarget = ClampPx(scrollTarget);
+            phys = scrollTarget;
         }
 
         void EnsureVisible(int i)
@@ -145,7 +147,7 @@ namespace WindowTool
             if (draggingBar && NeedsScroll)
             {
                 float f = (e.Y - dragGrab - Theme.S(2)) / Math.Max(1, Height - Theme.S(4) - BarHeight());
-                scrollPx = scrollTarget = ClampPx((int)(f * MaxPx));
+                scrollPx = scrollTarget = ClampPx((int)(f * MaxPx)); phys = scrollPx; vel = 0f;
                 Invalidate();
                 return;
             }
@@ -170,7 +172,7 @@ namespace WindowTool
                     return;
                 }
                 float f = (e.Y - Theme.S(2)) / Math.Max(1, Height - Theme.S(4));
-                scrollPx = scrollTarget = ClampPx((int)(f * MaxPx) - ViewH / 2);
+                scrollPx = scrollTarget = ClampPx((int)(f * MaxPx) - ViewH / 2); phys = scrollPx; vel = 0f;
                 Invalidate();
                 return;
             }
@@ -191,7 +193,7 @@ namespace WindowTool
 
         protected override void OnMouseUp(MouseEventArgs e)
         {
-            if (draggingBar) { draggingBar = false; Capture = false; }
+            if (draggingBar) { draggingBar = false; Capture = false; Motion.Cancel(scrollTag); }
             base.OnMouseUp(e);
         }
 

@@ -729,56 +729,62 @@ namespace WindowTool
             var m = trayMenu;
             m.Items.Clear();
 
-            m.AddItem("显示主界面", Glyph.Window, (s, e) => ShowMain());
+            m.AddItem("显示主界面", Glyph.Window, (s, e) => ShowMain()).Hint = "单击图标";
 
             if (music != null && music.HasSong)
             {
-                m.AddSep();
-                m.AddItem(music.Playing ? "暂停播放" : "继续播放", music.Playing ? Glyph.Pause : Glyph.Play,
-                    (s, e) => music.Toggle());
+                m.AddHeader("播放");
+                m.AddItem(music.Playing ? "暂停" : "继续播放", music.Playing ? Glyph.Pause : Glyph.Play,
+                    (s, e) => music.Toggle()).Hint = "Ctrl+Alt+P";
                 m.AddItem("下一首", Glyph.Next, (s, e) => music.Next(true));
             }
 
-            m.AddSep();
-            m.AddItem("选择图片背景", Glyph.Picture, (s, e) => TrayApplyBg(true));
-            m.AddItem("选择视频背景", Glyph.Film, (s, e) => TrayApplyBg(false));
-            var off = m.AddItem("关闭桌面背景", Glyph.Close, (s, e) => TrayBgOff());
+            m.AddHeader("桌面背景");
+            m.AddItem("选择图片…", Glyph.Picture, (s, e) => TrayApplyBg(true));
+            m.AddItem("选择视频…", Glyph.Film, (s, e) => TrayApplyBg(false));
+            var off = m.AddItem("关闭背景", Glyph.Close, (s, e) => TrayBgOff());
             off.Enabled = bgForms.Count > 0;
 
             var pinned = Manager.PinnedSnapshot();
             if (pinned.Length > 0)
             {
-                m.AddSep();
+                m.AddHeader("已置顶 " + pinned.Length + " 个");
                 int shown = Math.Min(pinned.Length, 5);
                 for (int i = 0; i < shown; i++)
                 {
                     IntPtr hh = pinned[i];
-                    string t = Theme.Ellipsis(TitleOf(hh), Theme.FontUi, Theme.S(210));
+                    string t = Theme.Ellipsis(TitleOf(hh), Theme.FontUi, Theme.S(190));
                     m.AddItem("取消置顶「" + t + "」", Glyph.PinSlash,
                         (s, e) => { Manager.CancelOp2(hh); Toast("已还原一个置顶窗口。", ToastKind.Good); });
                 }
                 if (pinned.Length > shown)
                 {
-                    m.AddItem("全部取消置顶（" + pinned.Length + " 个）", Glyph.PinSlash,
+                    m.AddItem("全部取消置顶", Glyph.PinSlash,
                         (s, e) =>
                         {
                             int n = Manager.CancelAll();
                             Toast("已还原 " + n + " 个置顶窗口。", ToastKind.Good);
-                        });
+                        }).Hint = "Ctrl+Alt+6";
                 }
             }
 
-            m.AddSep();
+            m.AddHeader("首选项");
             bool dark = Theme.IsDark;
             int mode = cfg.Int("darkMode", dark ? 1 : 0);
             if (mode == 2) dark = SystemLightsDark();
-            var dm = m.AddItem("深色模式", Glyph.Moon, (s, e) => SetTrayDark(!Theme.IsDark));
-            dm.Flag = dark;
-            var ar = m.AddItem("开机自动运行", Glyph.Bolt, (s, e) => ToggleAutoRun());
-            ar.Flag = AutoRunOn();
+            m.AddItem("深色模式", Glyph.Moon, (s, e) => SetTrayDark(!Theme.IsDark)).Flag = dark;
+            m.AddItem("开机自动运行", Glyph.Bolt, (s, e) => ToggleAutoRun()).Flag = AutoRunOn();
+            m.AddItem("界面动画", Glyph.Enlarge, (s, e) => ToggleMotion()).Flag = Motion.Enabled;
 
             m.AddSep();
             m.AddItem("退出", Glyph.Power, MacTone.Danger, (s, e) => { reallyExit = true; Close(); });
+        }
+
+        void ToggleMotion()
+        {
+            Motion.Enabled = !Motion.Enabled;
+            cfg.Set("motion", Motion.Enabled ? 1 : 0);
+            Save();
         }
 
         void SetTrayDark(bool on)
@@ -801,10 +807,7 @@ namespace WindowTool
             return false;
         }
 
-        public void ToggleAutoRun()
-        {
-            SetAutoRun(!AutoRunOn(), true);
-        }
+        public void ToggleAutoRun() { SetAutoRun(!AutoRunOn(), true); }
 
         /// 通用页与托盘菜单共用：on 为 false 时删除 Run 项。
         public void SetAutoRun(bool on, bool notify)
