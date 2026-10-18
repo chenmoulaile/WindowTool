@@ -228,7 +228,7 @@ namespace WindowTool
             {
                 var pill = new RectangleF(Theme.S(2), 1,
                     Width - Theme.S(4), Height - 2);
-                Color basePill = Tone == MacTone.Danger ? Theme.Red : Theme.Accent;
+                Color basePill = Tone == MacTone.Danger ? Theme.Red : Theme.AccentFill;
                 Color c = Theme.Blend(Theme.Hover, basePill, a);
                 if (!Enabled) c = Theme.Alpha(Theme.Hover, (int)(160 * a));
                 using (var p = Theme.RoundRectF(pill, Theme.S(5)))

@@ -426,7 +426,7 @@ namespace WindowTool
 
             swatch = new MacSwatches();
             swatch.SelectedIndex = Host.Cfg.Int("hue", 0);
-            swatch.Width = H(206);
+            swatch.Width = H(146);
             swatch.SelectedIndexChanged += (s, e) =>
             {
                 Host.Cfg.Set("hue", (int)swatch.SelectedHue);
@@ -434,7 +434,7 @@ namespace WindowTool
                 Host.Save();
             };
 
-            slRadius = Slider(0, 20, Host.Cfg.Int("radius", 10), (s, e) => Host.SetRadius(slRadius.Value));
+            slRadius = Slider(0, 16, Host.Cfg.Int("radius", 8), (s, e) => Host.SetRadius(slRadius.Value));
             slRadius.Width = H(220);
 
             swMotion = new MacSwitch();
@@ -449,7 +449,7 @@ namespace WindowTool
             Card("外观",
                 Row("界面主题", "深色会同步系统标题栏配色", segTheme),
                 Row("强调色", "选中态、开关与进度条的主色", swatch),
-                Row("控件圆角", "0 为直角，建议 8~12", slRadius),
+                Row("控件圆角", "0 为直角，建议 6~10", slRadius),
                 Row("界面动画", "页面切换与悬停的过渡效果", swMotion));
 
             swAutoRun = new MacSwitch();

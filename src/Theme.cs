@@ -7,7 +7,10 @@ using System.Windows.Forms;
 
 namespace WindowTool
 {
-    public enum AccentHue { Blue, Purple, Pink, Red, Orange, Yellow, Green }
+    /// 强调色只有 5 个，且每个都单独验过对比度：文字/指示用 Text 变体，
+    /// 填充块用 Fill 变体（保证白字 >=4.5:1）。旧的 7 色是照着苹果系统色板抄的，
+    /// 黄/橙那种亮度下白字根本读不了。
+    public enum AccentHue { Graphite, Teal, Iris, Terracotta, Moss }
 
     /// 设计令牌：颜色、字体、圆角、DPI 缩放。所有像素尺寸必须经 S/P/Sz 换算。
     static class Theme
@@ -15,7 +18,7 @@ namespace WindowTool
         public static int Radius = 8;
         public static bool IsDark;
         public static float Scale = 1f;
-        public static AccentHue Hue = AccentHue.Blue;
+        public static AccentHue Hue = AccentHue.Graphite;
 
         public static Color Window;      // 窗口底
         public static Color Sidebar;     // 侧栏（比窗口略亮/暗，模拟毛玻璃）
@@ -28,11 +31,13 @@ namespace WindowTool
         public static Color Text;
         public static Color TextDim;
         public static Color TextFaint;
-        public static Color Accent;
+        public static Color Accent;      // 文字、指示条、描边用
+        public static Color AccentFill;  // 实心块用，保证上面的白字达到 AA
         public static Color AccentSoft;  // 强调色淡底（选中行、tinted 按钮）
         public static Color OnAccent;
         public static Color Green;
         public static Color Red;
+        public static Color Warning;
         public static Color Knob;        // 滑块/开关的圆钮
 
         public static Font FontUi;
@@ -88,16 +93,24 @@ namespace WindowTool
         public static Point P(int x, int y) { return new Point(S(x), S(y)); }
         public static Size Sz(int w, int h) { return new Size(S(w), S(h)); }
 
+        // { 亮色-文字, 亮色-填充, 暗色-文字, 暗色-填充 }
         public static readonly Dictionary<AccentHue, Color[]> Hues = new Dictionary<AccentHue, Color[]>
         {
-            { AccentHue.Blue,   new[] { Color.FromArgb(0, 122, 255),  Color.FromArgb(10, 132, 255) } },
-            { AccentHue.Purple, new[] { Color.FromArgb(88, 86, 214),  Color.FromArgb(191, 90, 242) } },
-            { AccentHue.Pink,   new[] { Color.FromArgb(255, 45, 85),  Color.FromArgb(255, 55, 95) } },
-            { AccentHue.Red,    new[] { Color.FromArgb(255, 59, 48),  Color.FromArgb(255, 69, 58) } },
-            { AccentHue.Orange, new[] { Color.FromArgb(255, 149, 0),  Color.FromArgb(255, 159, 10) } },
-            { AccentHue.Yellow, new[] { Color.FromArgb(255, 204, 0),  Color.FromArgb(255, 214, 10) } },
-            { AccentHue.Green,  new[] { Color.FromArgb(52, 199, 89),  Color.FromArgb(48, 209, 88) } },
+            { AccentHue.Graphite,   new[] { C(0x2A,0x63,0xD8), C(0x2A,0x63,0xD8), C(0x5B,0x8D,0xEF), C(0x2A,0x63,0xD8) } },
+            { AccentHue.Teal,       new[] { C(0x0E,0x7B,0x6C), C(0x0E,0x7B,0x6C), C(0x4C,0xBB,0xA7), C(0x17,0x83,0x6F) } },
+            { AccentHue.Iris,       new[] { C(0x5B,0x45,0xC9), C(0x5B,0x45,0xC9), C(0xA0,0x8C,0xFF), C(0x5B,0x45,0xC9) } },
+            { AccentHue.Terracotta, new[] { C(0xB4,0x47,0x2F), C(0xB4,0x47,0x2F), C(0xE5,0x8A,0x6E), C(0xB9,0x4A,0x32) } },
+            { AccentHue.Moss,       new[] { C(0x3D,0x7A,0x22), C(0x3D,0x7A,0x22), C(0x8C,0xC9,0x5F), C(0x43,0x81,0x1F) } }
         };
+
+        static Color C(int r, int g, int b) { return Color.FromArgb(r, g, b); }
+
+        static Color[] HuePair()
+        {
+            Color[] p;
+            if (!Hues.TryGetValue(Hue, out p)) p = Hues[AccentHue.Graphite];
+            return p;
+        }
 
         public static void SetDark(bool dark)
         {
@@ -111,53 +124,54 @@ namespace WindowTool
             if (IsDark) ApplyDark(); else ApplyLight();
         }
 
-        static Color AccentFor()
-        {
-            Color[] pair;
-            if (!Hues.TryGetValue(Hue, out pair)) pair = Hues[AccentHue.Blue];
-            return IsDark ? pair[1] : pair[0];
-        }
-
         static void ApplyLight()
         {
-            Window = Color.FromArgb(242, 242, 247);
-            Sidebar = Color.FromArgb(236, 236, 242);
-            Card = Color.White;
-            CardSunken = Color.FromArgb(228, 228, 233);
-            Hover = Color.FromArgb(244, 244, 248);
-            Pressed = Color.FromArgb(233, 233, 239);
-            Separator = Color.FromArgb(225, 225, 232);
-            Border = Color.FromArgb(210, 210, 218);
-            Text = Color.FromArgb(29, 29, 31);
-            TextDim = Color.FromArgb(110, 110, 118);
-            TextFaint = Color.FromArgb(152, 152, 160);
-            Accent = AccentFor();
-            AccentSoft = Blend(Accent, Color.White, 0.14f);
+            // 石墨灰阶：底色偏冷、卡片纯白，靠 1px 描边分层而不是阴影
+            Window = C(0xEE,0xF0,0xF3);
+            Sidebar = C(0xE8,0xEB,0xEF);
+            Card = C(0xFF,0xFF,0xFF);
+            CardSunken = C(0xE3,0xE6,0xEA);
+            Hover = C(0xE9,0xEC,0xF1);
+            Pressed = C(0xDF,0xE3,0xEA);
+            Separator = C(0xDF,0xE2,0xE7);
+            Border = C(0xC9,0xCD,0xD5);
+            Text = C(0x14,0x16,0x1A);
+            TextDim = C(0x55,0x5D,0x6B);
+            TextFaint = C(0x73,0x7E,0x92);
+            var h = HuePair();
+            Accent = h[0];
+            AccentFill = h[1];
+            AccentSoft = Blend(h[1], Color.White, 0.88f);
             OnAccent = Color.White;
-            Green = Color.FromArgb(52, 199, 89);
-            Red = Color.FromArgb(255, 59, 48);
+            Green = C(0x17,0x78,0x4F);
+            Red = C(0xBE,0x2F,0x28);
+            Warning = C(0x9A,0x5B,0x00);
             Knob = Color.White;
         }
 
         static void ApplyDark()
         {
-            Window = Color.FromArgb(30, 30, 32);
-            Sidebar = Color.FromArgb(38, 38, 41);
-            Card = Color.FromArgb(46, 46, 50);
-            CardSunken = Color.FromArgb(60, 60, 66);
-            Hover = Color.FromArgb(58, 58, 63);
-            Pressed = Color.FromArgb(70, 70, 76);
-            Separator = Color.FromArgb(62, 62, 68);
-            Border = Color.FromArgb(78, 78, 84);
-            Text = Color.FromArgb(245, 245, 247);
-            TextDim = Color.FromArgb(152, 152, 158);
-            TextFaint = Color.FromArgb(110, 110, 118);
-            Accent = AccentFor();
-            AccentSoft = Blend(Accent, Color.FromArgb(46, 46, 50), 0.24f);
+            // 暗色不是反相：表面靠明度抬升分层，强调色提亮、填充色压深保住白字对比
+            Window = C(0x14,0x15,0x18);
+            Sidebar = C(0x19,0x1B,0x1F);
+            Card = C(0x1D,0x1F,0x24);
+            CardSunken = C(0x28,0x2B,0x32);
+            Hover = C(0x26,0x2A,0x31);
+            Pressed = C(0x30,0x35,0x40);
+            Separator = C(0x2C,0x30,0x38);
+            Border = C(0x3D,0x43,0x4E);
+            Text = C(0xED,0xEE,0xF1);
+            TextDim = C(0xA6,0xAE,0xBB);
+            TextFaint = C(0x7B,0x83,0x91);
+            var h = HuePair();
+            Accent = h[2];
+            AccentFill = h[3];
+            AccentSoft = Blend(h[3], C(0x1D,0x1F,0x24), 0.84f);
             OnAccent = Color.White;
-            Green = Color.FromArgb(48, 209, 88);
-            Red = Color.FromArgb(255, 69, 58);
-            Knob = Color.FromArgb(235, 235, 238);
+            Green = C(0x3F,0xB9,0x84);
+            Red = C(0xE5,0x67,0x5F);
+            Warning = C(0xD9,0x9A,0x2B);
+            Knob = C(0xEC,0xEE,0xF1);
         }
 
         public static Color Blend(Color a, Color b, float t)

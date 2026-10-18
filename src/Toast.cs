@@ -67,7 +67,7 @@ namespace WindowTool
             switch (kind)
             {
                 case ToastKind.Good: return Theme.Green;
-                case ToastKind.Warn: return Color.FromArgb(255, 149, 0);
+                case ToastKind.Warn: return Theme.Warning;
                 case ToastKind.Bad: return Theme.Red;
             }
             return Theme.Accent;

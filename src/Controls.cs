@@ -97,7 +97,7 @@ namespace WindowTool
             fill = Theme.Card; text = Theme.Text; border = Theme.Border;
             switch (Tone)
             {
-                case MacTone.Accent: fill = Theme.Accent; text = Theme.OnAccent; border = fill; break;
+                case MacTone.Accent: fill = Theme.AccentFill; text = Theme.OnAccent; border = fill; break;
                 case MacTone.Tinted: fill = Theme.AccentSoft; text = Theme.Accent; border = fill; break;
                 case MacTone.Danger: fill = Theme.Red; text = Color.White; border = fill; break;
                 case MacTone.Ghost: fill = Color.Transparent; text = Theme.Accent; border = Color.Transparent; break;
@@ -242,7 +242,7 @@ namespace WindowTool
                 ? (hover ? Color.FromArgb(88, 88, 94) : Color.FromArgb(72, 72, 78))
                 : (hover ? Color.FromArgb(210, 210, 216) : Color.FromArgb(226, 226, 232));
             using (var p = Theme.RoundRect(new Rectangle(0, 0, Width - 1, Height - 1), Height))
-                Theme.FillPath(g, p, Theme.Blend(offTrack, Theme.Green, t));
+                Theme.FillPath(g, p, Theme.Blend(offTrack, Theme.AccentFill, t));
 
             float k = Height - Theme.S(4);
             float travel = Width - k - Theme.S(4);
@@ -559,7 +559,7 @@ namespace WindowTool
             if (fx > track.Left + 1)
             {
                 var filled = new Rectangle(track.Left, track.Y, (int)(fx - track.Left), track.Height);
-                using (var p = Theme.RoundRect(filled, (int)th)) Theme.FillPath(g, p, Theme.Accent);
+                using (var p = Theme.RoundRect(filled, (int)th)) Theme.FillPath(g, p, Theme.AccentFill);
             }
             float k = Theme.S(drag || hover ? 18 : 16);
             using (var sh = new SolidBrush(Color.FromArgb(52, 0, 0, 0)))
@@ -933,7 +933,7 @@ namespace WindowTool
             if (fw > 2)
             {
                 using (var p = Theme.RoundRect(new Rectangle(0, 0, fw, Height - 1), Height))
-                    Theme.FillPath(g, p, Theme.Accent);
+                    Theme.FillPath(g, p, Theme.AccentFill);
             }
         }
     }
@@ -1005,15 +1005,14 @@ namespace WindowTool
                 var r = Dot(i);
                 Color[] pair;
                 if (!Theme.Hues.TryGetValue(hues[i], out pair)) continue;
-                Color c = Theme.IsDark ? pair[1] : pair[0];
+                Color c = Theme.IsDark ? pair[2] : pair[0];
                 using (var b = new SolidBrush(c)) g.FillEllipse(b, r);
                 if (i == hover)
                     using (var pen = new Pen(Theme.Alpha(Theme.Text, 90), Math.Max(1f, Theme.S(1))))
                         g.DrawEllipse(pen, r.X - 1, r.Y - 1, r.Width + 2, r.Height + 2);
                 if (i == sel)
                 {
-                    using (var pen = new Pen(Theme.IsDark ? Color.FromArgb(235, 235, 238) : Color.White,
-                        Math.Max(1.6f, Theme.S(2))))
+                    using (var pen = new Pen(Theme.Knob, Math.Max(1.6f, Theme.S(2))))
                         g.DrawEllipse(pen, r.X - 3, r.Y - 3, r.Width + 6, r.Height + 6);
                 }
             }
@@ -1114,7 +1113,7 @@ namespace WindowTool
                 }
                 var z = Rectangle.Round(Zone(c, Order[i]));
                 using (var p = Theme.RoundRect(z, Theme.S(4)))
-                    Theme.FillPath(g, p, i == hover ? Theme.Accent : Theme.Alpha(Theme.Accent, 120));
+                    Theme.FillPath(g, p, i == hover ? Theme.AccentFill : Theme.Alpha(Theme.AccentFill, 150));
             }
         }
     }

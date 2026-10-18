@@ -269,7 +269,7 @@ namespace WindowTool
                 if (isSel)
                 {
                     using (var p = Theme.RoundRect(rowRect, Theme.S(6)))
-                        Theme.FillPath(g, p, Theme.Accent);
+                        Theme.FillPath(g, p, Theme.AccentFill);
                 }
                 else if (i == hover && it.Enabled)
                 {

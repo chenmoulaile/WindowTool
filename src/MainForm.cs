@@ -108,8 +108,8 @@ namespace WindowTool
         void InitTheme()
         {
             Theme.SetDark(ResolveDark());
-            Theme.SetHue((AccentHue)Math.Max(0, Math.Min(6, cfg.Int("hue", 0))));
-            Theme.Radius = cfg.Int("radius", 10);
+            Theme.SetHue((AccentHue)Math.Max(0, Math.Min(4, cfg.Int("hue", 0))));
+            Theme.Radius = cfg.Int("radius", 8);
             // 动画默认跟随 Windows 的"显示动画"设置，用户可在通用页单独关掉
             Motion.Enabled = cfg.Int("motion", Motion.SystemAllowsAnimation() ? 1 : 0) != 0;
         }
@@ -139,8 +139,8 @@ namespace WindowTool
         public void ApplyTheme()
         {
             Theme.SetDark(ResolveDark());
-            Theme.SetHue((AccentHue)Math.Max(0, Math.Min(6, cfg.Int("hue", 0))));
-            Theme.Radius = cfg.Int("radius", 10);
+            Theme.SetHue((AccentHue)Math.Max(0, Math.Min(4, cfg.Int("hue", 0))));
+            Theme.Radius = cfg.Int("radius", 8);
             BackColor = Theme.Window;
             Theme.Restyle(this);
             ApplyChrome();
@@ -179,20 +179,20 @@ namespace WindowTool
             LayoutShell();
         }
 
-        void AddSidebarItem(string key, string title, string subtitle, Glyph icon, Color tile)
+        void AddSidebarItem(string key, string title, string subtitle, Glyph icon)
         {
-            var it = new SidebarItem { Key = key, Title = title, Subtitle = subtitle, Icon = icon, Tile = tile };
+            var it = new SidebarItem { Key = key, Title = title, Subtitle = subtitle, Icon = icon };
             sidebar.Items.Add(it);
         }
 
         void BuildPages()
         {
-            AddSidebarItem("window", "窗口", "置顶与穿透", Glyph.Pin, Color.FromArgb(0, 122, 255));
-            AddSidebarItem("bg", "背景", "图片与视频", Glyph.Picture, Color.FromArgb(175, 82, 222));
-            AddSidebarItem("music", "音乐", "播放与歌词", Glyph.Music, Color.FromArgb(255, 45, 85));
-            AddSidebarItem("env", "竞赛环境", "一键部署", Glyph.Box, Color.FromArgb(48, 176, 199));
-            AddSidebarItem("layout", "布局方案", "一键摆位", Glyph.Layers, Color.FromArgb(88, 86, 214));
-            AddSidebarItem("general", "通用", "外观与热键", Glyph.Gear, Color.FromArgb(142, 142, 147));
+            AddSidebarItem("window", "窗口", "置顶与穿透", Glyph.Pin);
+            AddSidebarItem("bg", "背景", "图片与视频", Glyph.Picture);
+            AddSidebarItem("music", "音乐", "播放与歌词", Glyph.Music);
+            AddSidebarItem("env", "竞赛环境", "一键部署", Glyph.Box);
+            AddSidebarItem("layout", "布局方案", "一键摆位", Glyph.Layers);
+            AddSidebarItem("general", "通用", "外观与热键", Glyph.Gear);
 
             Register(new WindowPage(this));
             Register(new BackgroundPage(this));
@@ -596,7 +596,7 @@ namespace WindowTool
         public void SetRadius(int v)
         {
             cfg.Set("radius", Math.Max(0, Math.Min(20, v)));
-            Theme.Radius = cfg.Int("radius", 10);
+            Theme.Radius = cfg.Int("radius", 8);
             Save();
             ApplyTheme();
         }

@@ -265,7 +265,6 @@ namespace WindowTool
         public string Title = "";
         public string Subtitle = "";
         public Glyph Icon;
-        public Color Tile = Theme.Accent;
     }
 
     /// 侧栏导航：小号线性图标 + 单行标题，选中项用淡色胶囊 + 左侧指示条。
@@ -430,12 +429,12 @@ namespace WindowTool
             {
                 var pr = PillRect(pillPos);
                 using (var p = Theme.RoundRect(pr, Theme.S(7)))
-                    Theme.FillPath(g, p, Theme.Alpha(Theme.Accent, Theme.IsDark ? 44 : 26));
+                    Theme.FillPath(g, p, Theme.AccentSoft);
                 // 左侧指示条：跟着胶囊一起滑
                 var bar = new RectangleF(Theme.S(3), pr.Y + pr.Height / 2f - Theme.S(8),
                     Theme.S(3), Theme.S(16));
                 using (var p = Theme.RoundRectF(bar, Theme.S(1.5f)))
-                    Theme.FillPath(g, p, items[sel].Tile);
+                    Theme.FillPath(g, p, Theme.Accent);
             }
 
             int isz = Theme.S(15);
@@ -447,7 +446,7 @@ namespace WindowTool
                 bool on = w > 0.5f;
 
                 var ib = new RectangleF(r.X + Theme.S(11), r.Y + (r.Height - isz) / 2f, isz, isz);
-                Icons.Draw(g, it.Icon, ib, on ? it.Tile : (i == hover ? Theme.Text : Theme.TextDim));
+                Icons.Draw(g, it.Icon, ib, on ? Theme.Accent : (i == hover ? Theme.Text : Theme.TextDim));
 
                 float tx = ib.Right + Theme.S(9);
                 int tw = r.Right - (int)tx - Theme.S(6);

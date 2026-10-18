@@ -198,8 +198,8 @@ namespace WindowTool
             int rad = Theme.S(9);
             using (var p = Theme.RoundRect(r, rad))
             {
-                using (var br = new LinearGradientBrush(r, Theme.Accent,
-                    Theme.Blend(Theme.Accent, Theme.IsDark ? Color.Black : Color.White, 0.42f), 45f))
+                using (var br = new LinearGradientBrush(r, Theme.AccentFill,
+                    Theme.Blend(Theme.AccentFill, Theme.IsDark ? Color.Black : Color.White, 0.42f), 45f))
                     g.FillPath(br, p);
             }
             float k = Width * (Playing ? 0.40f + (phase % 8) * 0.004f : 0.40f);
