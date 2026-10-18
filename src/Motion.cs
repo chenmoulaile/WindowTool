@@ -30,7 +30,6 @@ namespace WindowTool
             public Ease Curve;
             public Action<float> Apply;
             public Action Done;
-            public Func<float, bool> Frame;
             // 跟随式补间用这一组
             public int TauMs;
             public long LastMs;
@@ -148,18 +147,6 @@ namespace WindowTool
                 if (i >= live.Count) continue;
                 var t = live[i];
                 long nowMs = wall.ElapsedMilliseconds;
-                if (t.Frame != null)
-                {
-                    int dt = (int)(nowMs - t.LastMs);
-                    if (dt < 0) dt = 0;
-                    if (dt > 60) dt = 60;            // 切窗口/卡顿回来时不要一次跳一大步
-                    t.LastMs = nowMs;
-                    bool keep = true;
-                    try { keep = t.Frame(dt / 1000f); }
-                    catch (Exception ex) { Program.Log(ex); keep = false; }
-                    if (!keep || nowMs - t.StartMs > t.Total) live.Remove(t);
-                    continue;
-                }
                 if (t.Set != null)
                 {
                     int dt = (int)(nowMs - t.LastMs);
@@ -220,27 +207,6 @@ namespace WindowTool
             BeginHiRes();
             EnsureClock();
         }
-
-        /// 逐帧回调：返回 false 就结束。惯性滚动这种"速度衰减 + 边界回弹"
-        /// 没法预先算出时长和终点，只能用循环；maxMs 只是兜底，防止回调写错停不下来。
-        public static void Run(object tag, Func<float, bool> frame, int maxMs)
-        {
-            if (frame == null) return;
-            if (!enabled) { frame(1f); return; }
-            for (int i = live.Count - 1; i >= 0; i--) if (ReferenceEquals(live[i].Tag, tag)) live.RemoveAt(i);
-            var t = new Tween();
-            t.Tag = tag;
-            t.StartMs = wall.ElapsedMilliseconds;
-            t.LastMs = t.StartMs;
-            t.Total = maxMs <= 0 ? 4000 : maxMs;
-            t.Curve = Ease.Linear;
-            t.Frame = frame;
-            live.Add(t);
-            BeginHiRes();
-            EnsureClock();
-        }
-
-        public static long Now { get { return wall.ElapsedMilliseconds; } }
 
         public static float Curve(Ease kind, float t)
         {

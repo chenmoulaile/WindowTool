@@ -41,7 +41,7 @@ namespace WindowTool
             PresetCheck();
 
             if (argv.Length > 1 && argv[1] == "smoke") { Smoke(); return; }
-            if (argv.Length > 1 && argv[1] == "perf") { Perf(); return; }
+            if (argv.Length > 1 && argv[1] == "perf") { TransitionCheck(); Perf(); return; }
             MenuShot(dir);
 
             MainForm.DesignRender = true;
@@ -126,6 +126,49 @@ namespace WindowTool
         }
 
         // 帧成本体检：页面/侧栏整块重绘耗时 + 真动画的帧间隔分布
+        // 转场漏底检查：把合成层在若干位移上各画一次，
+        // 统计"露出窗口底色"的像素 —— 上一版一闪一闪就是这些像素在闪。
+        static void TransitionCheck()
+        {
+            int w = 400, h = 200;
+            using (var oldB = new Bitmap(w, h))
+            using (var newB = new Bitmap(w, h))
+            using (var layer = new SnapLayer())
+            {
+                using (var g = Graphics.FromImage(oldB)) g.Clear(Color.FromArgb(200, 30, 30));
+                using (var g = Graphics.FromImage(newB)) g.Clear(Color.FromArgb(30, 200, 30));
+                layer.CreateControl();
+                // 不泵消息，补间停在 t=0；逐帧手动摆 dx 来检查覆盖
+                layer.Play(new Rectangle(0, 0, w, h), oldB, newB, -1);
+                var dxF = typeof(SnapLayer).GetField("dx", BindingFlags.NonPublic | BindingFlags.Instance);
+                var onPaint = typeof(SnapLayer).GetMethod("OnPaint", BindingFlags.NonPublic | BindingFlags.Instance);
+                int bad = 0, samples = 0;
+                var report = new System.Text.StringBuilder();
+                for (int step = 0; step <= 8; step++)
+                {
+                    int dx = (int)Math.Round(-w * step / 8.0);
+                    dxF.SetValue(layer, dx);
+                    using (var dst = new Bitmap(w, h))
+                    {
+                        using (var g = Graphics.FromImage(dst))
+                            onPaint.Invoke(layer, new object[] { new PaintEventArgs(g, new Rectangle(0, 0, w, h)) });
+                        int holes = 0;
+                        for (int x = 0; x < w; x += 8)
+                        {
+                            var c = dst.GetPixel(x, h / 2);
+                            samples++;
+                            bool red = c.R > 150 && c.G < 90;
+                            bool green = c.G > 150 && c.R < 90;
+                            if (!red && !green) { holes++; bad++; }
+                        }
+                        report.Append("dx=" + dx + " 漏底" + holes + "  ");
+                    }
+                }
+                Console.WriteLine("TRANSITION " + report);
+                Console.WriteLine("TRANSITION samples=" + samples + " leaked=" + bad + (bad == 0 ? "  OK-no-gap" : "  GAP-FLASH"));
+            }
+        }
+
         static void Perf()
         {
             MainForm.DesignRender = true;

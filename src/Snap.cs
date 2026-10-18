@@ -14,8 +14,7 @@ namespace WindowTool
         const int WS_EX_TRANSPARENT = 0x20;
 
         Bitmap incoming, outgoing;
-        int ny, oy;
-        float aIn, aOut = 1f;
+        int dx, dir;
         readonly object tag = new object();
 
         public SnapLayer()
@@ -67,17 +66,15 @@ namespace WindowTool
             SetBounds(area.X, area.Y, area.Width, area.Height);
             Visible = true;
             BringToFront();
-            ny = 0; oy = 0; aIn = 0f; aOut = 1f;
+            dx = 0; this.dir = dir;
             Invalidate();
-            // 交叉淡入 + 轻微上浮：两层同时换 alpha，位移只有 14px。
-            // 整幅滑动幅度一大就像幻灯片，反而显得廉价。
-            int lift = Theme.S(14) * dir;
-            Motion.To(tag, 220, Ease.InOut, delegate(float t)
+            // 同步位移：旧页滑出去多少，新页就滑进来多少，两页像同一条胶片一样移动。
+            // 不做任何 alpha 混合——合成层每帧会先把自己擦成底色，
+            // 半透明起始帧会把底色露出来，就是上一版"一闪一闪"的原因。
+            int w = area.Width;
+            Motion.To(tag, 240, Ease.InOut, delegate(float t)
             {
-                aIn = t;
-                aOut = 1f - t;
-                ny = (int)Math.Round(lift * (1f - t));
-                oy = (int)Math.Round(-lift * t);
+                dx = (int)Math.Round(w * t) * dir;
                 if (!IsDisposed) Invalidate();
             }, delegate { Release(); });
         }
@@ -90,27 +87,16 @@ namespace WindowTool
             Visible = false;
         }
 
-        static void BlitAlpha(Graphics g, Bitmap b, int x, int y, float a)
-        {
-            if (b == null || a <= 0.004f) return;
-            if (a >= 0.996f) { g.DrawImageUnscaled(b, x, y); return; }
-            var cm = new System.Drawing.Imaging.ColorMatrix();
-            cm.Matrix33 = a;
-            using (var ia = new System.Drawing.Imaging.ImageAttributes())
-            {
-                ia.SetColorMatrix(cm, System.Drawing.Imaging.ColorMatrixFlag.Default,
-                    System.Drawing.Imaging.ColorAdjustType.Bitmap);
-                g.DrawImage(b, new Rectangle(x, y, b.Width, b.Height),
-                    0, 0, b.Width, b.Height, GraphicsUnit.Pixel, ia);
-            }
-        }
-
         protected override void OnPaint(PaintEventArgs e)
         {
             if (incoming == null) { e.Graphics.Clear(Theme.Window); return; }
             var g = e.Graphics;
-            BlitAlpha(g, incoming, 0, ny, aIn);
-            if (outgoing != null) BlitAlpha(g, outgoing, 0, oy, aOut);
+            int w = incoming.Width;
+            // 新页始终贴在旧页的另一侧、跟着同一个 dx 走。
+            // 方向必须由 dir 决定而不是由 dx 的正负决定：否则 t=0 那一帧
+            // 新页会从 +w 跳到 -w，看起来就是一次闪。
+            g.DrawImageUnscaled(incoming, dx - dir * w, 0);
+            g.DrawImageUnscaled(outgoing, dx, 0);
         }
     }
 }

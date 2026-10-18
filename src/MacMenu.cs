@@ -31,10 +31,10 @@ namespace WindowTool
         }
 
         // macOS 菜单是紧凑的：行高 22、图标槽 22。之前 30 的行长得很"Windows 95"。
-        public int Pad { get { return Theme.S(5); } }
-        public int RowH { get { return Theme.S(20); } }
-        public int Gutter { get { return Theme.S(24); } }
-        public int HeadH { get { return Theme.S(17); } }
+        public int Pad { get { return Theme.S(3); } }
+        public int RowH { get { return Theme.S(19); } }
+        public int Gutter { get { return Theme.S(21); } }
+        public int HeadH { get { return Theme.S(15); } }
 
         /// 分隔线条目的宽度：与最宽条目对齐，靠 Layout 阶段回填。
         public int LineWidth
@@ -64,7 +64,7 @@ namespace WindowTool
                 m.Relayout();                     // 分隔线/小标题的高度在这里才落定
                 if (!m.Line) content = Math.Max(content, m.NaturalWidth);
             }
-            if (content < Theme.S(196)) content = Theme.S(196);
+            if (content < Theme.S(148)) content = Theme.S(148);
             foreach (ToolStripItem it in Items)
             {
                 var m = it as MacMenuItem;
@@ -151,7 +151,7 @@ namespace WindowTool
             {
                 int w = Width, h = Height;
                 if (w < 8 || h < 8) return;
-                int rad = Theme.S(11);
+                int rad = Theme.S(6);
                 Region old = Region;
                 using (var p = Theme.RoundRect(new Rectangle(0, 0, w, h), rad))
                     Region = new Region(p);
@@ -217,14 +217,14 @@ namespace WindowTool
                     TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
                 int hw = string.IsNullOrEmpty(Hint) ? 0 :
                     TextRenderer.MeasureText(Hint, Theme.FontSmall, Size.Empty,
-                        TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width + Theme.S(22);
-                return menu.Gutter + tw + Theme.S(30) + hw;
+                        TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width + Theme.S(16);
+                return menu.Gutter + tw + Theme.S(18) + hw;
             }
         }
 
         public void Relayout()
         {
-            Height = Line ? Theme.S(9) : (Header ? menu.HeadH : menu.RowH);
+            Height = Line ? Theme.S(7) : (Header ? menu.HeadH : menu.RowH);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -235,13 +235,13 @@ namespace WindowTool
             if (Line)
             {
                 using (var pen = new Pen(Theme.Separator, Math.Max(1f, Theme.S(1))))
-                    g.DrawLine(pen, Theme.S(10), Height / 2, Math.Max(Theme.S(10), Width - Theme.S(8)), Height / 2);
+                    g.DrawLine(pen, Theme.S(7), Height / 2, Math.Max(Theme.S(7), Width - Theme.S(6)), Height / 2);
                 return;
             }
             if (Header)
             {
                 MacUi.LeftText(g, Text ?? "", Theme.FontGroup,
-                    new RectangleF(Theme.S(11), 0, Width - Theme.S(18), Height), Theme.TextFaint);
+                    new RectangleF(Theme.S(8), 0, Width - Theme.S(14), Height), Theme.TextFaint);
                 return;
             }
 
@@ -251,11 +251,11 @@ namespace WindowTool
             {
                 // 软底 + 左侧强调条。整条刷成实心强调色的那种高亮块
                 // 在小菜单里非常突兀，是"廉价感"的主要来源。
-                var pill = new RectangleF(Theme.S(3), 1, Width - Theme.S(6), Height - 2);
+                var pill = new RectangleF(Theme.S(2), 1, Width - Theme.S(4), Height - 2);
                 using (var p = Theme.RoundRectF(pill, Theme.S(5)))
                     Theme.FillPath(g, p, Theme.Alpha(hot, (int)((Theme.IsDark ? 54 : 32) * a)));
-                var bar = new RectangleF(Theme.S(2), pill.Y + pill.Height * 0.24f,
-                    Theme.S(2), pill.Height * 0.52f);
+                var bar = new RectangleF(Theme.S(1), pill.Y + pill.Height * 0.22f,
+                    Theme.S(2), pill.Height * 0.56f);
                 using (var p = Theme.RoundRectF(bar, Theme.S(1)))
                     Theme.FillPath(g, p, Theme.Alpha(hot, (int)(230 * a)));
             }
@@ -268,8 +268,8 @@ namespace WindowTool
                 glyph = Theme.Blend(glyph, hot, a);
             }
 
-            int d = Theme.S(12);
-            Icons.Draw(g, Icon, new RectangleF(Theme.S(8), (Height - d) / 2f, d, d), glyph);
+            int d = Theme.S(11);
+            Icons.Draw(g, Icon, new RectangleF(Theme.S(6), (Height - d) / 2f, d, d), glyph);
 
             int right = Width - Theme.S(8);
             if (Flag)
@@ -311,7 +311,7 @@ namespace WindowTool
             Theme.Hint(g);
             g.Clear(MacMenu.Surface());
             var r = new Rectangle(0, 0, menu.Width - 1, menu.Height - 1);
-            int rad = Theme.S(11);
+            int rad = Theme.S(6);
             // 顶部柔光必须一路渐隐到底：用半高的实心块会在条目没铺满的右侧留一条硬边
             using (var p = Theme.RoundRect(r, rad))
             {

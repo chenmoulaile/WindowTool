@@ -27,7 +27,7 @@ namespace WindowTool
         readonly List<MacListItem> items = new List<MacListItem>();
         int sel = -1, hover = -1;
         int scrollPx, scrollTarget;
-        float phys, vel;
+        float phys;
         int rowH;
         bool draggingBar;
         float dragGrab;
@@ -96,16 +96,18 @@ namespace WindowTool
         int BarW { get { return NeedsScroll ? Theme.S(6) : 0; } }
         int TopIndex { get { return rowH <= 0 ? 0 : scrollPx / rowH; } }
 
-        /// 跟随式收敛：滚轮连按时只更新目标，不重启补间。
-        /// 每次事件重启一条补间会把速度反复归零，手感就是"一格一格跳"。
+        /// 短促阻尼跟随：滚轮只推进目标，画面按真实时间追上去（tau 45ms）。
+        /// 不做惯性长滑、不做橡皮筋 —— 参考 MyDockFinder 的列表，
+        /// 目标明确、几十毫秒到位才有掌控感。
         void Glide()
         {
+            phys = scrollTarget;
             Motion.Chase(scrollTag, delegate { return scrollPx; }, delegate { return scrollTarget; },
                 delegate(int v)
                 {
-                    scrollPx = v;
+                    scrollPx = v; phys = v;
                     if (!IsDisposed) Invalidate();
-                }, 70);
+                }, 45);
         }
 
         void ScrollBy(int dy)
@@ -147,7 +149,7 @@ namespace WindowTool
             if (draggingBar && NeedsScroll)
             {
                 float f = (e.Y - dragGrab - Theme.S(2)) / Math.Max(1, Height - Theme.S(4) - BarHeight());
-                scrollPx = scrollTarget = ClampPx((int)(f * MaxPx)); phys = scrollPx; vel = 0f;
+                scrollPx = scrollTarget = ClampPx((int)(f * MaxPx)); phys = scrollPx;
                 Invalidate();
                 return;
             }
@@ -172,7 +174,7 @@ namespace WindowTool
                     return;
                 }
                 float f = (e.Y - Theme.S(2)) / Math.Max(1, Height - Theme.S(4));
-                scrollPx = scrollTarget = ClampPx((int)(f * MaxPx) - ViewH / 2); phys = scrollPx; vel = 0f;
+                scrollPx = scrollTarget = ClampPx((int)(f * MaxPx) - ViewH / 2); phys = scrollPx;
                 Invalidate();
                 return;
             }
