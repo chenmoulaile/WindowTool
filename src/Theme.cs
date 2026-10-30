@@ -1,350 +1,203 @@
 using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Text;
 using System.Windows.Forms;
 
 namespace WindowTool
 {
-    /// 强调色只有 5 个，且每个都单独验过对比度：文字/指示用 Text 变体，
-    /// 填充块用 Fill 变体（保证白字 >=4.5:1）。旧的 7 色是照着苹果系统色板抄的，
-    /// 黄/橙那种亮度下白字根本读不了。
-    public enum AccentHue { Graphite, Teal, Iris, Terracotta, Moss }
-
-    /// 设计令牌：颜色、字体、圆角、DPI 缩放。所有像素尺寸必须经 S/P/Sz 换算。
+    /// <summary>
+    /// 主题中枢：暗色优先的现代工具风（类 VS Code），
+    /// 同时保留浅色档与跟随系统档。全部颜色集中在这里，控件只取不配。
+    /// </summary>
     static class Theme
     {
-        public static int Radius = 8;
-        public static bool IsDark;
+        // ---------------- DPI ----------------
         public static float Scale = 1f;
-        public static AccentHue Hue = AccentHue.Graphite;
-
-        public static Color Window;      // 窗口底
-        public static Color Sidebar;     // 侧栏（比窗口略亮/暗，模拟毛玻璃）
-        public static Color Card;        // 卡片/输入面
-        public static Color CardSunken;  // 轨道、分段控件底槽
-        public static Color Hover;
-        public static Color Pressed;
-        public static Color Separator;
-        public static Color Border;
-        public static Color Text;
-        public static Color TextDim;
-        public static Color TextFaint;
-        public static Color Accent;      // 文字、指示条、描边用
-        public static Color AccentFill;  // 实心块用，保证上面的白字达到 AA
-        public static Color AccentSoft;  // 强调色淡底（选中行、tinted 按钮）
-        public static Color OnAccent;
-        public static Color Green;
-        public static Color Red;
-        public static Color Warning;
-        public static Color Knob;        // 滑块/开关的圆钮
-
-        public static Font FontUi;
-        public static Font FontUiMedium;
-        public static Font FontUiBold;
-        public static Font FontMenu;     // 托盘菜单：比正文略大一号，行高跟着放宽
-        public static Font FontSmall;
-        public static Font FontSection;
-        public static Font FontGroup;
-        public static Font FontTitle;
-        public static Font FontMono;
-
-        static Theme()
-        {
-            BuildFonts(1f);
-            ApplyLight();
-        }
-
-        // DPI 变化时重建字体：GDI 字号按物理 DPI 自动放大，但 WinForms 传入的是逻辑点，
-        // 这里显式按 Scale 还原，保证与像素布局同比例。
-        public static void BuildFonts(float scale)
-        {
-            float k = scale <= 0f ? 1f : scale;
-            FontUi = F(9f, FontStyle.Regular, k);
-            FontUiMedium = F(9f, FontStyle.Bold, k);
-            FontUiBold = F(9.5f, FontStyle.Bold, k);
-            FontMenu = F(9.5f, FontStyle.Regular, k);
-            FontSmall = F(8f, FontStyle.Regular, k);
-            FontSection = F(9.5f, FontStyle.Bold, k);
-            FontGroup = F(8.5f, FontStyle.Bold, k);
-            FontTitle = F(13f, FontStyle.Bold, k);
-            FontMono = new Font("Consolas", 8.5f * k);
-        }
-
-        static Font F(float pt, FontStyle style, float k)
-        {
-            foreach (var fam in new string[] { "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI" })
-            {
-                try
-                {
-                    var f = new Font(fam, pt * k, style);
-                    if (string.Equals(f.FontFamily.Name, fam, StringComparison.OrdinalIgnoreCase)) return f;
-                    f.Dispose();
-                }
-                catch { }
-            }
-            return new Font(FontFamily.GenericSansSerif, pt * k, style);
-        }
-
-        /// 侧栏宽度只有一个来源：MainForm 排版、标题带起点都要跟它一致。
-        public static int SidebarW { get { return S(208); } }
-
-        public static int S(int v) { return (int)Math.Round(v * Scale); }
-        public static float S(float v) { return v * Scale; }
-        public static Point P(int x, int y) { return new Point(S(x), S(y)); }
+        public static int S(int v) { return Math.Max(1, (int)Math.Round(v * Scale)); }
         public static Size Sz(int w, int h) { return new Size(S(w), S(h)); }
 
-        // { 亮色-文字, 亮色-填充, 暗色-文字, 暗色-填充 }
-        public static readonly Dictionary<AccentHue, Color[]> Hues = new Dictionary<AccentHue, Color[]>
+        // ---------------- 强调色 ----------------
+        // 每个提供「填充」（按钮/开关/选中态底色，上有白字）与
+        // 「文字」（链接/高亮文字，对深底可读）两个变体。
+        public static AccentHue Hue = AccentHue.Azure;
+
+        // ---------------- 调色板（暗色档） ----------------
+        // 基底走 VS Code Dark+ 的层次：最深的窗体外壳、略浅的导航栏、再浅的内容卡片。
+        static readonly Color DShell      = Color.FromArgb(0x12, 0x13, 0x17);
+        static readonly Color DRail       = Color.FromArgb(0x17, 0x18, 0x1D);
+        static readonly Color DCard       = Color.FromArgb(0x1E, 0x1F, 0x25);
+        static readonly Color DCardHi     = Color.FromArgb(0x26, 0x27, 0x2E);
+        static readonly Color DBorder     = Color.FromArgb(0x33, 0x35, 0x3D);
+        static readonly Color DText       = Color.FromArgb(0xD4, 0xD7, 0xDC);
+        static readonly Color DTextDim    = Color.FromArgb(0x8B, 0x8F, 0x98);
+        static readonly Color DTextFaint  = Color.FromArgb(0x5C, 0x60, 0x69);
+        static readonly Color DInputBg    = Color.FromArgb(0x14, 0x15, 0x19);
+
+        // ---------------- 调色板（浅色档） ----------------
+        static readonly Color LShell      = Color.FromArgb(0xF2, 0xF3, 0xF5);
+        static readonly Color LRail       = Color.FromArgb(0xEA, 0xEB, 0xEE);
+        static readonly Color LCard       = Color.FromArgb(0xFF, 0xFF, 0xFF);
+        static readonly Color LCardHi     = Color.FromArgb(0xF4, 0xF5, 0xF7);
+        static readonly Color LBorder     = Color.FromArgb(0xD5, 0xD8, 0xDD);
+        static readonly Color LText       = Color.FromArgb(0x24, 0x26, 0x2B);
+        static readonly Color LTextDim    = Color.FromArgb(0x63, 0x67, 0x6E);
+        static readonly Color LTextFaint  = Color.FromArgb(0x9A, 0x9E, 0xA6);
+        static readonly Color LInputBg    = Color.FromArgb(0xFA, 0xFA, 0xFB);
+
+        public static bool IsDark = true;
+
+        // ---------------- 语义色 ----------------
+        public static Color Good    { get { return IsDark ? Color.FromArgb(0x3F, 0xC1, 0x8B) : Color.FromArgb(0x14, 0x7D, 0x54); } }
+        public static Color Warn    { get { return IsDark ? Color.FromArgb(0xE0, 0xA9, 0x3E) : Color.FromArgb(0x9A, 0x5B, 0x00); } }
+        public static Color Bad     { get { return IsDark ? Color.FromArgb(0xE7, 0x6A, 0x5E) : Color.FromArgb(0xBE, 0x2F, 0x28); } }
+
+        // ---------------- 派生色 ----------------
+        public static Color Shell    { get { return IsDark ? DShell : LShell; } }
+        public static Color Rail     { get { return IsDark ? DRail : LRail; } }
+        public static Color Card     { get { return IsDark ? DCard : LCard; } }
+        public static Color CardHi   { get { return IsDark ? DCardHi : LCardHi; } }
+        public static Color Border   { get { return IsDark ? DBorder : LBorder; } }
+        public static Color Text     { get { return IsDark ? DText : LText; } }
+        public static Color TextDim  { get { return IsDark ? DTextDim : LTextDim; } }
+        public static Color TextFaint{ get { return IsDark ? DTextFaint : LTextFaint; } }
+        public static Color InputBg  { get { return IsDark ? DInputBg : LInputBg; } }
+
+        // 强调色：填充变体（实心块）/ 文字变体（深底上的彩色文字）
+        public static Color Accent      { get { return AccentFill(Hue); } }
+        public static Color AccentSoft  { get { return IsDark ? Alpha(AccentFill(Hue), 42) : Alpha(AccentFill(Hue), 34); } }
+        public static Color AccentText  { get { return IsDark ? AccentTextDark(Hue) : AccentFill(Hue); } }
+
+        public static Color Alpha(Color c, int a) { return Color.FromArgb(a, c); }
+
+        static Color AccentFill(AccentHue h)
         {
-            { AccentHue.Graphite,   new[] { C(0x2A,0x63,0xD8), C(0x2A,0x63,0xD8), C(0x5B,0x8D,0xEF), C(0x2A,0x63,0xD8) } },
-            { AccentHue.Teal,       new[] { C(0x0E,0x7B,0x6C), C(0x0E,0x7B,0x6C), C(0x4C,0xBB,0xA7), C(0x17,0x83,0x6F) } },
-            { AccentHue.Iris,       new[] { C(0x5B,0x45,0xC9), C(0x5B,0x45,0xC9), C(0xA0,0x8C,0xFF), C(0x5B,0x45,0xC9) } },
-            { AccentHue.Terracotta, new[] { C(0xB4,0x47,0x2F), C(0xB4,0x47,0x2F), C(0xE5,0x8A,0x6E), C(0xB9,0x4A,0x32) } },
-            { AccentHue.Moss,       new[] { C(0x3D,0x7A,0x22), C(0x3D,0x7A,0x22), C(0x8C,0xC9,0x5F), C(0x43,0x81,0x1F) } }
-        };
-
-        static Color C(int r, int g, int b) { return Color.FromArgb(r, g, b); }
-
-        static Color[] HuePair()
-        {
-            Color[] p;
-            if (!Hues.TryGetValue(Hue, out p)) p = Hues[AccentHue.Graphite];
-            return p;
-        }
-
-        public static void SetDark(bool dark)
-        {
-            IsDark = dark;
-            if (dark) ApplyDark(); else ApplyLight();
-        }
-
-        public static void SetHue(AccentHue hue)
-        {
-            Hue = hue;
-            if (IsDark) ApplyDark(); else ApplyLight();
-        }
-
-        static void ApplyLight()
-        {
-            // 石墨灰阶：底色偏冷、卡片纯白，靠 1px 描边分层而不是阴影
-            Window = C(0xEE,0xF0,0xF3);
-            Sidebar = C(0xE8,0xEB,0xEF);
-            Card = C(0xFF,0xFF,0xFF);
-            CardSunken = C(0xE3,0xE6,0xEA);
-            Hover = C(0xE9,0xEC,0xF1);
-            Pressed = C(0xDF,0xE3,0xEA);
-            Separator = C(0xDF,0xE2,0xE7);
-            Border = C(0xC9,0xCD,0xD5);
-            Text = C(0x14,0x16,0x1A);
-            TextDim = C(0x55,0x5D,0x6B);
-            TextFaint = C(0x73,0x7E,0x92);
-            var h = HuePair();
-            Accent = h[0];
-            AccentFill = h[1];
-            AccentSoft = Blend(h[1], Color.White, 0.88f);
-            OnAccent = Color.White;
-            Green = C(0x17,0x78,0x4F);
-            Red = C(0xBE,0x2F,0x28);
-            Warning = C(0x9A,0x5B,0x00);
-            Knob = Color.White;
-        }
-
-        static void ApplyDark()
-        {
-            // 暗色不是反相：表面靠明度抬升分层，强调色提亮、填充色压深保住白字对比
-            Window = C(0x14,0x15,0x18);
-            Sidebar = C(0x19,0x1B,0x1F);
-            Card = C(0x1D,0x1F,0x24);
-            CardSunken = C(0x28,0x2B,0x32);
-            Hover = C(0x26,0x2A,0x31);
-            Pressed = C(0x30,0x35,0x40);
-            Separator = C(0x2C,0x30,0x38);
-            Border = C(0x3D,0x43,0x4E);
-            Text = C(0xED,0xEE,0xF1);
-            TextDim = C(0xA6,0xAE,0xBB);
-            TextFaint = C(0x7B,0x83,0x91);
-            var h = HuePair();
-            Accent = h[2];
-            AccentFill = h[3];
-            AccentSoft = Blend(h[3], C(0x1D,0x1F,0x24), 0.84f);
-            OnAccent = Color.White;
-            Green = C(0x3F,0xB9,0x84);
-            Red = C(0xE5,0x67,0x5F);
-            Warning = C(0xD9,0x9A,0x2B);
-            Knob = C(0xEC,0xEE,0xF1);
-        }
-
-        public static Color Blend(Color a, Color b, float t)
-        {
-            t = Math.Max(0f, Math.Min(1f, t));
-            return Color.FromArgb(
-                (int)(a.R + (b.R - a.R) * t),
-                (int)(a.G + (b.G - a.G) * t),
-                (int)(a.B + (b.B - a.B) * t));
-        }
-
-        public static Color Alpha(Color c, int a) { return Color.FromArgb(a, c.R, c.G, c.B); }
-
-        public static Color HoverOf(Color c) { return Blend(c, IsDark ? Color.White : Color.Black, 0.06f); }
-        public static Color PressedOf(Color c) { return Blend(c, IsDark ? Color.White : Color.Black, 0.13f); }
-
-        public static GraphicsPath RoundRect(Rectangle r, int radius)
-        {
-            return RoundRectF(r.X, r.Y, r.Width, r.Height, radius);
-        }
-
-        /// float 版圆角路径：矢量图标与渐变块需要亚像素定位，取整会让小尺寸图标变形。
-        public static GraphicsPath RoundRectF(RectangleF r, float radius)
-        {
-            return RoundRectF(r.X, r.Y, r.Width, r.Height, radius);
-        }
-
-        static GraphicsPath RoundRectF(float x, float y, float w, float h, float radius)
-        {
-            var p = new GraphicsPath();
-            float rad = radius;
-            float max = Math.Max(0f, Math.Min(w, h) / 2f);
-            if (rad > max) rad = max;
-            if (rad < 1f || w < 2f || h < 2f)
+            switch (h)
             {
-                p.AddRectangle(new RectangleF(x, y, w, h));
-                return p;
+                case AccentHue.Jade:    return Color.FromArgb(0x2F, 0x9E, 0x77);
+                case AccentHue.Violet:  return Color.FromArgb(0x7C, 0x6C, 0xE0);
+                case AccentHue.Terracotta: return Color.FromArgb(0xD1, 0x5C, 0x4B);
+                case AccentHue.Moss:    return Color.FromArgb(0x71, 0x8D, 0x3F);
+                default:                return Color.FromArgb(0x37, 0x74, 0xD9);
             }
-            float d = rad * 2f;
-            p.AddArc(x, y, d, d, 180, 90);
-            p.AddArc(x + w - d, y, d, d, 270, 90);
-            p.AddArc(x + w - d, y + h - d, d, d, 0, 90);
-            p.AddArc(x, y + h - d, d, d, 90, 90);
+        }
+
+        static Color AccentTextDark(AccentHue h)
+        {
+            // 暗底上的强调文字需要提亮一档，避免 4.x:1 的边线对比
+            switch (h)
+            {
+                case AccentHue.Jade:    return Color.FromArgb(0x53, 0xC9, 0x9C);
+                case AccentHue.Violet:  return Color.FromArgb(0x9A, 0x8D, 0xF0);
+                case AccentHue.Terracotta: return Color.FromArgb(0xE8, 0x84, 0x72);
+                case AccentHue.Moss:    return Color.FromArgb(0x9C, 0xB5, 0x66);
+                default:                return Color.FromArgb(0x62, 0x9B, 0xF2);
+            }
+        }
+
+        // ---------------- 字体 ----------------
+        static Font body, bodyBold, small, title, mono;
+        public static Font FontBody     { get { return body ?? (body = New("Microsoft YaHei UI", 9f)); } }
+        public static Font FontBodyBold { get { return bodyBold ?? (bodyBold = New("Microsoft YaHei UI", 9f, FontStyle.Bold)); } }
+        public static Font FontSmall    { get { return small ?? (small = New("Microsoft YaHei UI", 8.25f)); } }
+        public static Font FontTitle    { get { return title ?? (title = New("Microsoft YaHei UI", 12f, FontStyle.Bold)); } }
+        public static Font FontMono     { get { return mono ?? (mono = New("Consolas", 9f)); } }
+
+        static Font New(string family, float pt, FontStyle style = FontStyle.Regular)
+        {
+            try { return new Font(family, pt, style, GraphicsUnit.Point); }
+            catch { return new Font(FontFamily.GenericSansSerif, pt, style, GraphicsUnit.Point); }
+        }
+
+        // ---------------- 切换 ----------------
+        public static void SetDark(bool dark) { IsDark = dark; }
+
+        public static void SetHue(AccentHue h) { Hue = h; }
+
+        /// 通知所有控件按当前主题重画（颜色全部即时取自本类，重画即生效）。
+        public static void RestyleAll(Control c)
+        {
+            if (c == null) return;
+            var tb = c as TextBoxBase;
+            if (tb != null)
+            {
+                tb.BackColor = InputBg;
+                tb.ForeColor = Text;
+            }
+            else c.BackColor = Shell;
+            foreach (Control child in c.Controls) RestyleAll(child);
+            c.Invalidate(true);
+        }
+
+        // ---------------- 绘制辅助 ----------------
+
+        public static void FillRound(Graphics g, Rectangle r, Color fill, int radius)
+        {
+            if (radius < 1 || r.Width < 2 || r.Height < 2) { using (var b = new SolidBrush(fill)) g.FillRectangle(b, r); return; }
+            int d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
+            using (var path = RoundedPath(r, d))
+            using (var b = new SolidBrush(fill)) g.FillPath(b, path);
+        }
+
+        public static System.Drawing.Drawing2D.GraphicsPath RoundedPath(Rectangle r, int d)
+        {
+            var p = new System.Drawing.Drawing2D.GraphicsPath();
+            if (r.Width <= 0 || r.Height <= 0) { p.AddRectangle(new Rectangle(0, 0, 1, 1)); return p; }
+            int w = Math.Max(0, r.Width), h = Math.Max(0, r.Height);
+            int dd = Math.Min(d, Math.Min(w, h));
+            p.AddArc(r.X, r.Y, dd, dd, 180, 90);
+            p.AddArc(r.X + w - dd, r.Y, dd, dd, 270, 90);
+            p.AddArc(r.X + w - dd, r.Y + h - dd, dd, dd, 0, 90);
+            p.AddArc(r.X, r.Y + h - dd, dd, dd, 90, 90);
             p.CloseFigure();
             return p;
         }
 
-        /// 上亮下暗的渐变填充：图标块靠它获得 iOS 式的一点厚度。
-        public static void FillGradient(Graphics g, GraphicsPath path, RectangleF r, Color top, Color bottom)
+        static Pen borderPen;
+        static Pen BorderPen
         {
-            using (var b = new LinearGradientBrush(
-                new RectangleF(r.X, r.Y, Math.Max(1f, r.Width), Math.Max(1f, r.Height)), top, bottom, 90f))
-                g.FillPath(b, path);
-        }
-
-        public static Color Lighten(Color c, float t) { return Blend(c, Color.White, t); }
-        public static Color Darken(Color c, float t) { return Blend(c, Color.Black, t); }
-
-        // 只有左上/右上（或左下/右下）圆角的路径，用于卡片分组的首/尾行
-        public static GraphicsPath RoundRectSides(Rectangle r, int radius, bool top, bool bottom)
-        {
-            return RoundRectSidesF(r.X, r.Y, r.Width, r.Height, radius, top, bottom);
-        }
-
-        public static GraphicsPath RoundRectSidesF(RectangleF r, float radius, bool top, bool bottom)
-        {
-            return RoundRectSidesF(r.X, r.Y, r.Width, r.Height, radius, top, bottom);
-        }
-
-        static GraphicsPath RoundRectSidesF(float x, float y, float w, float h, float radius, bool top, bool bottom)
-        {
-            var p = new GraphicsPath();
-            float rad = Math.Min(radius, Math.Min(w / 2f, h / 2f));
-            if (rad < 1f) { p.AddRectangle(new RectangleF(x, y, w, h)); return p; }
-            float d = rad * 2f;
-            if (top && bottom) return RoundRectF(x, y, w, h, radius);
-            if (top)
+            get
             {
-                p.AddArc(x, y, d, d, 180, 90);
-                p.AddArc(x + w - d, y, d, d, 270, 90);
-                p.AddLine(x + w, y + h, x, y + h);
-            }
-            else
-            {
-                p.AddLine(x, y, x + w, y);
-                p.AddArc(x + w - d, y + h - d, d, d, 0, 90);
-                p.AddArc(x, y + h - d, d, d, 90, 90);
-            }
-            p.CloseFigure();
-            return p;
-        }
-
-        public static int CornerRadius(int w, int h)
-        {
-            int max = Math.Max(0, Math.Min(w, h) / 2 - 1);
-            int r = S(Radius);
-            return r > max ? max : r;
-        }
-
-        // 自绘圆角控件需要不透明底色擦四角，否则透出父控件残影
-        public static Color SolidBack(Control c)
-        {
-            Control p = c.Parent;
-            while (p != null && p.BackColor.A == 0) p = p.Parent;
-            return p == null ? Window : p.BackColor;
-        }
-
-        public static void Hint(Graphics g)
-        {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-        }
-
-        public static void FillPath(Graphics g, GraphicsPath path, Color c)
-        {
-            using (var b = new SolidBrush(c)) g.FillPath(b, path);
-        }
-
-        public static void StrokePath(Graphics g, GraphicsPath path, Color c, float width)
-        {
-            using (var p = new Pen(c, width)) g.DrawPath(p, path);
-        }
-
-        /// 投影层数开关：多层叠加是整页重绘里最贵的一项，低画质/低端机可以砍掉。
-        public static int ShadowQuality = 100;   // 0~100，按百分比缩减层数
-
-        // macOS 式柔和投影：多层半透明圆角叠加
-        public static void Shadow(Graphics g, Rectangle r, int radius, int spread, Color tint)
-        {
-            if (ShadowQuality < 100)
-                spread = spread * Math.Max(0, ShadowQuality) / 100;
-            if (spread <= 0) return;
-            for (int i = spread; i >= 1; i--)
-            {
-                var rr = new Rectangle(r.X - i, r.Y - i + 1, r.Width + i * 2, r.Height + i * 2);
-                int a = (int)Math.Max(6, 26 - i * 4);
-                using (var p = RoundRect(rr, radius + i))
-                using (var b = new SolidBrush(Color.FromArgb(a, tint)))
-                    g.FillPath(b, p);
+                // 主题切换时 Border 变色，按颜色判断是否需要重建
+                if (borderPen == null || borderPen.Color != Border)
+                {
+                    if (borderPen != null) borderPen.Dispose();
+                    borderPen = new Pen(Border);
+                }
+                return borderPen;
             }
         }
 
-        const TextFormatFlags Measure = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+        public static void RoundRect(Graphics g, Rectangle r, int radius)
+        {
+            if (radius < 1 || r.Width < 2 || r.Height < 2) { g.DrawRectangle(BorderPen, r); return; }
+            int d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
+            using (var path = RoundedPath(r, d))
+                g.DrawPath(BorderPen, path);
+        }
 
-        /// 省略号预算必须与绘制时的 NoPadding 度量一致，否则中文会被无谓截断。
-        public static string Ellipsis(string s, Font f, int maxWidth)
+        public static string Ellipsis(string s, Font f, int maxPx)
         {
             if (string.IsNullOrEmpty(s)) return "";
-            if (TextRenderer.MeasureText(s, f, Size.Empty, Measure).Width <= maxWidth) return s;
-            for (int n = s.Length - 1; n > 0; n--)
+            var flags = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis;
+            var size = TextRenderer.MeasureText(s, f, Size.Empty, flags);
+            if (size.Width <= maxPx) return s;
+            // 二分截断，避免逐字符删减的 O(n²)
+            int lo = 0, hi = s.Length;
+            while (lo < hi)
             {
-                string cand = s.Substring(0, n) + "…";
-                if (TextRenderer.MeasureText(cand, f, Size.Empty, Measure).Width <= maxWidth) return cand;
+                int mid = (lo + hi + 1) / 2;
+                if (TextRenderer.MeasureText(s.Substring(0, mid) + "…", f, Size.Empty, flags).Width <= maxPx) lo = mid;
+                else hi = mid - 1;
             }
-            return "…";
-        }
-
-        // 主题切换时递归刷新所有自绘控件
-        public static void Restyle(Control root)
-        {
-            root.Invalidate(true);
-            foreach (Control c in root.Controls)
-            {
-                var themed = c as IThemed;
-                if (themed != null) themed.ApplyTheme();
-                Restyle(c);
-            }
+            return s.Substring(0, lo) + "…";
         }
     }
 
-    interface IThemed { void ApplyTheme(); }
+    enum AccentHue
+    {
+        Azure = 0,
+        Jade = 1,
+        Violet = 2,
+        Terracotta = 3,
+        Moss = 4
+    }
 }

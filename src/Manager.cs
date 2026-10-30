@@ -27,6 +27,13 @@ namespace WindowTool
         static readonly Dictionary<IntPtr, WinInfo> states = new Dictionary<IntPtr, WinInfo>();
         static readonly List<IntPtr> pinOrder = new List<IntPtr>();
 
+        // 被其他程序压下后由守护补回来的次数（用于界面展示与诊断）
+        public static int GuardRescues;
+        // 最近一次置顶被拒绝的窗口（通常是高权限窗口，需要管理员运行才能操作）
+        public static IntPtr LastDenied;
+        public static IntPtr[] DeniedList() { lock (denied) return new List<IntPtr>(denied).ToArray(); }
+        static readonly List<IntPtr> denied = new List<IntPtr>();
+
         public static int PinnedCount { get { lock (pinOrder) return pinOrder.Count; } }
 
         public static IntPtr[] PinnedSnapshot()
@@ -77,16 +84,68 @@ namespace WindowTool
             return (Native.GetWindowLong(h, Native.GWL_EXSTYLE) & Native.WS_EX_TOPMOST) != 0;
         }
 
-        public static void SetTopmost(IntPtr h, bool topmost)
+        public static bool SetTopmost(IntPtr h, bool topmost)
         {
-            SetTopmost(h, topmost, true);
+            return SetTopmost(h, topmost, true);
         }
 
-        public static void SetTopmost(IntPtr h, bool topmost, bool track)
+        /// 设置后立刻回读验证：目标可能是高权限窗口（UIPI 拦截），
+        /// SetWindowPos 未必报错但样式位不会变。返回实际是否生效。
+        public static bool SetTopmost(IntPtr h, bool topmost, bool track)
         {
             if (track) GetInfo(h).TopByUs = topmost;
             Native.SetWindowPos(h, topmost ? Native.HWND_TOPMOST : Native.HWND_NOTOPMOST, 0, 0, 0, 0,
                 Native.SWP_NOMOVE | Native.SWP_NOSIZE | Native.SWP_NOACTIVATE);
+            bool ok = !topmost || IsTopmost(h);
+            if (!ok)
+            {
+                lock (denied)
+                {
+                    if (!denied.Contains(h)) denied.Add(h);
+                    if (denied.Count > 16) denied.RemoveAt(0);
+                }
+                LastDenied = h;
+            }
+            else lock (denied) denied.Remove(h);
+            return ok;
+        }
+
+        /// 置顶守护：把所有「由本工具置顶但被压下去」的窗口重新顶回来。
+        /// 由定时器与前台变化事件共同驱动。返回本次补回的窗口数。
+        public static int GuardScan()
+        {
+            IntPtr[] snap;
+            lock (states) { snap = new IntPtr[states.Count]; states.Keys.CopyTo(snap, 0); }
+            int rescued = 0;
+            foreach (var h in snap)
+            {
+                WinInfo s;
+                if (!states.TryGetValue(h, out s)) continue;
+                if (!s.TopByUs) continue;
+                if (!Native.IsWindow(h)) continue;
+                if (IsTopmost(h)) continue;
+                // 只补回置顶位，不动层级带内的相对顺序（那属于「层级调整」的职责）
+                if (SetTopmost(h, true, false)) rescued++;
+            }
+            GuardRescues += rescued;
+            return rescued;
+        }
+
+        /// 由本工具置顶且当前仍然存活的窗口快照（托盘菜单 / 界面列表用）。
+        public static IntPtr[] PinnedByUs()
+        {
+            var list = new List<IntPtr>();
+            lock (states)
+            {
+                foreach (var kv in states)
+                    if (kv.Value.TopByUs && Native.IsWindow(kv.Key)) list.Add(kv.Key);
+            }
+            return list.ToArray();
+        }
+
+        public static bool IsDenied(IntPtr h)
+        {
+            lock (denied) return denied.Contains(h);
         }
 
         public static byte GetLastAlpha(IntPtr h)
@@ -453,7 +512,13 @@ namespace WindowTool
                 }
             }
             if (dead != null)
-                foreach (var d in dead) states.Remove(d);
+            {
+                foreach (var d in dead)
+                {
+                    states.Remove(d);
+                    lock (denied) denied.Remove(d);
+                }
+            }
         }
     }
 }

@@ -11,8 +11,8 @@ namespace WindowTool
         StretchFill
     }
 
-    /// 背景窗体（图片）。刻意不持有任何 WPF 字段：字段类型会在类被 JIT 解析时拉入
-    /// PresentationCore / WindowsFormsIntegration，那样连用图片背景也要付 WPF 的内存。
+    /// 背景窗体（图片）。图片背景用 GDI+ 直接绘制，
+    /// 整个程序不再引用任何 WPF 程序集，常驻内存显著降低。
     class BgWindow : Form
     {
         protected readonly IntPtr target;
@@ -122,72 +122,6 @@ namespace WindowTool
                 img = null;
                 old.Dispose();
             }
-            base.OnFormClosed(e);
-        }
-    }
-
-    /// 视频背景：只有真正用到时才构造，WPF 相关类型也只在这个子类里被解析。
-    sealed class VideoBgWindow : BgWindow
-    {
-        System.Windows.Forms.Integration.ElementHost host;
-        System.Windows.Controls.MediaElement media;
-
-        static System.Windows.Media.Stretch WpfStretch(DisplayFit f)
-        {
-            if (f == DisplayFit.FitContain) return System.Windows.Media.Stretch.Uniform;
-            if (f == DisplayFit.StretchFill) return System.Windows.Media.Stretch.Fill;
-            return System.Windows.Media.Stretch.UniformToFill;
-        }
-
-        public VideoBgWindow(IntPtr targetHwnd, string videoPath, DisplayFit displayFit) : base(targetHwnd, displayFit)
-        {
-            media = new System.Windows.Controls.MediaElement
-            {
-                LoadedBehavior = System.Windows.Controls.MediaState.Manual,
-                UnloadedBehavior = System.Windows.Controls.MediaState.Close,
-                Stretch = WpfStretch(displayFit)
-            };
-            var m = media;
-            m.MediaFailed += (s, ev) =>
-            {
-                Program.Log(new Exception("MediaFailed: " + (ev.ErrorException == null ? "" : ev.ErrorException.Message)));
-                try { m.Close(); } catch { }
-            };
-
-            System.Windows.Media.MediaClock clock = null;
-            try
-            {
-                var timeline = new System.Windows.Media.MediaTimeline(new Uri(videoPath))
-                {
-                    RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever
-                };
-                clock = timeline.CreateClock();
-            }
-            catch (Exception ex) { Program.Log(ex); }
-
-            var pendingClock = clock;
-            m.Loaded += (s, ev) =>
-            {
-                try
-                {
-                    if (pendingClock != null) m.Clock = pendingClock;
-                    else { m.Source = new Uri(videoPath); m.Play(); }
-                }
-                catch (Exception ex) { Program.Log(ex); }
-            };
-
-            host = new System.Windows.Forms.Integration.ElementHost { Dock = DockStyle.Fill, Child = m };
-            Controls.Add(host);
-        }
-
-        protected override void OnFormClosed(FormClosedEventArgs e)
-        {
-            try
-            {
-                if (host != null) { host.Child = null; host.Dispose(); host = null; }
-                if (media != null) { try { media.Close(); } catch { } media = null; }
-            }
-            catch (Exception ex) { Program.Log(ex); }
             base.OnFormClosed(e);
         }
     }

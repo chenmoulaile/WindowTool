@@ -169,5 +169,23 @@ namespace WindowTool
 
         [StructLayout(LayoutKind.Sequential)]
         public struct POINT { public int X, Y; }
+
+        // ---------- 置顶守护：前台变化事件 ----------
+        public const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+        public const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+
+        public delegate void WinEventProc(IntPtr hook, uint evt, IntPtr hwnd, int idObject,
+            int idChild, uint thread, uint time);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr SetWinEventHook(uint evtMin, uint evtMax, IntPtr hmod,
+            WinEventProc proc, uint pid, uint tid, uint flags);
+
+        [DllImport("user32.dll")]
+        public static extern bool UnhookWinEvent(IntPtr hook);
+
+        // ---------- 多显示器 ----------
+        [DllImport("user32.dll")]
+        public static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
     }
 }

@@ -43,10 +43,8 @@ namespace WindowTool
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += (s, e) => Report(e.Exception);
             AppDomain.CurrentDomain.UnhandledException += (s, e) => Log(e.ExceptionObject as Exception);
-            // 刻意不订阅 WPF Dispatcher.UnhandledException：碰一下 Dispatcher.CurrentDispatcher
-            // 就会把 WindowsBase/PresentationCore 拉进进程，白付十几 MB 常驻内存。
-            // WPF 回调最终仍在 UI 线程抛出，上面的 ThreadException 已经能兜住。
-            Application.Run(new MainForm());
+            // v2.0 起不再引用任何 WPF 程序集（视频背景已移除），常驻内存大幅下降。
+            Application.Run(new AppForm());
         }
 
         static void Report(Exception ex)
