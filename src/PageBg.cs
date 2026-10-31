@@ -178,10 +178,8 @@ namespace WindowTool
             {
                 hwnd = h;
                 meta = m;
-                Height = Theme.S(40);
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                          ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
-                BackColor = Theme.InputBg;
 
                 titleL = new LabelEx { Font = Theme.FontBody, TextColor = Theme.Text };
                 Controls.Add(titleL);
@@ -195,6 +193,10 @@ namespace WindowTool
                     if (r != null) r();
                 };
                 Controls.Add(del);
+
+                // v2.0.1：尺寸/背景色赋值放在子控件创建之后（设 Height 会同步触发 OnResize）
+                BackColor = Theme.InputBg;
+                Height = Theme.S(40);
                 RefreshState();
             }
 
@@ -213,6 +215,7 @@ namespace WindowTool
             protected override void OnResize(EventArgs e)
             {
                 base.OnResize(e);
+                if (del == null || titleL == null || pathL == null) return;
                 int dw = Theme.S(70);
                 del.SetBounds(Width - dw - Theme.S(4), (Height - Theme.S(24)) / 2, dw, Theme.S(24));
                 titleL.SetBounds(Theme.S(10), Theme.S(2), Width - dw - Theme.S(16), Theme.S(20));

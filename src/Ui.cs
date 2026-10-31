@@ -492,8 +492,10 @@ namespace WindowTool
         {
             SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                      ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
-            Height = Theme.S(30);
 
+            // v2.0.1 修复：先创建子控件再改尺寸 —— 设 Height 会同步触发 OnResize，
+            // 旧顺序在 box 尚未创建时进入 OnResize 导致 NullReferenceException，
+            // 程序启动即退（无窗口、无进程）。Windows 与 mono 行为一致。
             box = new TextBox();
             box.BorderStyle = BorderStyle.None;
             box.Font = Theme.FontBody;
@@ -502,20 +504,27 @@ namespace WindowTool
             box.Multiline = false;
             Controls.Add(box);
             box.TextChanged += (s, e) => { var h = TextChangedByUser; if (h != null) h(this, EventArgs.Empty); };
+
+            Height = Theme.S(30);
         }
 
-        protected override void OnFontChanged(EventArgs e) { box.Font = Font; base.OnFontChanged(e); }
+        protected override void OnFontChanged(EventArgs e)
+        {
+            if (box != null) box.Font = Font;
+            base.OnFontChanged(e);
+        }
 
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            if (box == null) return;
             box.SetBounds(Theme.S(9), (Height - box.PreferredHeight) / 2, Math.Max(1, Width - Theme.S(18)), box.PreferredHeight);
         }
 
         protected override void OnBackColorChanged(EventArgs e)
         {
             base.OnBackColorChanged(e);
-            box.BackColor = Theme.InputBg;
+            if (box != null) box.BackColor = Theme.InputBg;
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -551,6 +560,7 @@ namespace WindowTool
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            if (box == null) return;
             box.SetBounds(Theme.S(30), (Height - box.PreferredHeight) / 2, Math.Max(1, Width - Theme.S(38)), box.PreferredHeight);
         }
     }

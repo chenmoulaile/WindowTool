@@ -37,6 +37,8 @@ namespace WindowTool
         UiButton exportBtn, importBtn, resetBtn;
         LabelEx aboutL;
 
+        bool built;   // v2.0.1：Build() 是否已完成（防止构造中途触发整体布局）
+
         public SettingsPage(AppForm app)
             : base(app, "settings", "设置")
         {
@@ -209,10 +211,12 @@ namespace WindowTool
             {
                 Font = Theme.FontSmall,
                 TextColor = Theme.TextFaint,
-                Text2 = "OI 窗口工具 v2.0 · 窗口置顶 / 穿透 / 背景 / 布局 · MIT License"
+                Text2 = "OI 窗口工具 v2.0.1 · 窗口置顶 / 穿透 / 背景 / 布局 · MIT License"
             };
             dataCard.Controls.Add(aboutL);
             Controls.Add(dataCard);
+
+            built = true;   // v2.0.1：Build 完成后才允许 RebuildRules 触发整体布局
         }
 
         void RebuildSwatches()
@@ -260,7 +264,9 @@ namespace WindowTool
                 ruleRows.Add(row);
             }
             ruleEmpty.Visible = ruleRows.Count == 0;
-            Relayout(Width, Height);
+            // v2.0.1 修复：Build 中途调用时（startCard 等尚未创建）不做整体布局，
+            // 否则 Relayout 访问未创建控件 → NullReferenceException 启动即退。
+            if (built) Relayout(Width, Height);
         }
 
         public override void OnShow()
@@ -427,7 +433,6 @@ namespace WindowTool
             public RuleRow(string p)
             {
                 proc = p;
-                Height = Theme.S(28);
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                          ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
                 nameL = new LabelEx { Font = Theme.FontMono, TextColor = Theme.Text, Text2 = p };
@@ -440,11 +445,15 @@ namespace WindowTool
                     if (h != null) h();
                 };
                 Controls.Add(delBtn);
+
+                // v2.0.1：尺寸赋值放在子控件创建之后（设 Height 会同步触发 OnResize）
+                Height = Theme.S(28);
             }
 
             protected override void OnResize(EventArgs e)
             {
                 base.OnResize(e);
+                if (delBtn == null || nameL == null) return;
                 delBtn.SetBounds(Width - Theme.S(74), 0, Theme.S(74), Height);
                 nameL.SetBounds(Theme.S(10), 0, Width - Theme.S(84), Height);
             }

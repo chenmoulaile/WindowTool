@@ -127,7 +127,6 @@ namespace WindowTool
             {
                 app = a;
                 preset = p;
-                Height = Theme.S(44);
                 SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                          ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
 
@@ -160,11 +159,15 @@ namespace WindowTool
                     if (h != null) h();
                 };
                 Controls.Add(delBtn);
+
+                // v2.0.1：尺寸赋值放在子控件创建之后（设 Height 会同步触发 OnResize）
+                Height = Theme.S(44);
             }
 
             protected override void OnResize(EventArgs e)
             {
                 base.OnResize(e);
+                if (applyBtn == null || nameL == null) return;
                 int aw = Theme.S(78), dw = Theme.S(78);
                 applyBtn.SetBounds(Width - aw - dw - Theme.S(12), (Height - Theme.S(26)) / 2, aw, Theme.S(26));
                 delBtn.SetBounds(Width - dw - Theme.S(4), (Height - Theme.S(26)) / 2, dw, Theme.S(26));
