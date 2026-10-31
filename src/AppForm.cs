@@ -98,7 +98,9 @@ namespace WindowTool
         public AppForm()
         {
             Instance = this;
+            Boot.Step("ctor: begin");
             cfg = Settings.Load(SettingsPath());
+            Boot.Step("ctor: settings loaded");
 
             Text = "OI 窗口工具";
             Font = Theme.FontBody;
@@ -115,25 +117,39 @@ namespace WindowTool
             capture.Clicked += OnPickedPoint;
 
             BuildShell();
+            Boot.Step("ctor: shell built");
             BuildPages();
+            Boot.Step("ctor: pages built");
             BuildTimers();
+            Boot.Step("ctor: timers built");
             BuildTray();
+            Boot.Step("ctor: tray built");
             InstallForegroundHook();
+            Boot.Step("ctor: foreground hook installed");
 
             LoadAutoRules();
             LoadPresets();
+            Boot.Step("ctor: rules & presets loaded");
             SelectPage(cfg.Str("page", "window"), true);
 
             RefreshWindowsSync();   // 启动时同步刷一次，列表不空窗
             LoadPrefs();
 
             RegisterHotkeys();
+            Boot.Step("ctor: hotkeys registered");
             tmrUi.Start();
             tmrGuard.Start();
             tmrBg.Start();
             tmrSec.Start();
             tmrEnum.Start();
             tmrTrim.Start();
+            Boot.Step("ctor: done, entering message loop");
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            Boot.Step("ui: window shown — message loop running");
         }
 
         // ==================================================================

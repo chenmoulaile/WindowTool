@@ -733,6 +733,7 @@ namespace WindowTool
             tray.Visible = true;
             tray.MouseClick += (s, e) => { if (e.Button == MouseButtons.Left) ShowMain(); };
             tray.DoubleClick += (s, e) => ShowMain();
+            Boot.Step("tray: icon visible=" + (tray != null && tray.Visible));
 
             RebuildTrayMenu();
         }

@@ -91,6 +91,10 @@ namespace WindowTool
         public static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern int RegisterWindowMessage(string lpString);
+        // v2.0.2：原生弹窗——WinForms/GDI+ 尚未可用或已损坏时也能把致命错误显示给用户
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        public static extern int MessageBox(IntPtr hWnd, string text, string caption, uint type);
+        public const uint MB_ICONERROR = 0x10;
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
 
